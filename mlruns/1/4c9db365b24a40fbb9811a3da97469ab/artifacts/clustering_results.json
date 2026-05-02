@@ -1,0 +1,75 @@
+{
+    "dataset_info": {
+        "original_shape": "(50000, 2)",
+        "features": [
+            "Latitude",
+            "Longitude",
+            "Hour",
+            "Month",
+            "DayOfWeek",
+            "IsWeekend",
+            "CrimeSeverity"
+        ]
+    },
+    "kmeans_results": [
+        {
+            "k": 3,
+            "silhouette_score": 0.4303128873142564,
+            "davies_bouldin_score": 0.8622615909539005
+        },
+        {
+            "k": 4,
+            "silhouette_score": 0.4082429127149035,
+            "davies_bouldin_score": 0.8590662374908699
+        },
+        {
+            "k": 5,
+            "silhouette_score": 0.39656080461003024,
+            "davies_bouldin_score": 0.8449806632735773
+        },
+        {
+            "k": 6,
+            "silhouette_score": 0.3964293737871974,
+            "davies_bouldin_score": 0.8326848855478253
+        },
+        {
+            "k": 7,
+            "silhouette_score": 0.39268522903392555,
+            "davies_bouldin_score": 0.8541418688575415
+        },
+        {
+            "k": 8,
+            "silhouette_score": 0.3974641226966519,
+            "davies_bouldin_score": 0.8088613970537827
+        },
+        {
+            "k": 9,
+            "silhouette_score": 0.4004668932752489,
+            "davies_bouldin_score": 0.8007934363033834
+        },
+        {
+            "k": 10,
+            "silhouette_score": 0.41202569875940637,
+            "davies_bouldin_score": 0.7726949867252133
+        }
+    ],
+    "best_kmeans": {
+        "k": 3,
+        "silhouette_score": 0.4303128873142564
+    },
+    "dbscan_results": {
+        "silhouette_score": 0.8952756996815746
+    },
+    "hierarchical_results": {
+        "silhouette_score": 0.3632909809580901
+    },
+    "feature_importance": {
+        "Longitude": 0.25980929482680065,
+        "Month": 0.25619621304311385,
+        "Latitude": 0.2400963107484296,
+        "DayOfWeek": 0.23928599340188514,
+        "IsWeekend": 0.2386976225078977,
+        "CrimeSeverity": 0.23138674754442412,
+        "Hour": 0.1634622591385819
+    }
+}
