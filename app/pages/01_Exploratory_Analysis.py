@@ -55,7 +55,7 @@ st.markdown(f"**Dataset loaded:** {len(df):,} records")
 
 with st.sidebar:
     st.header("Filters")
-    sample_size = st.slider("Sample size for maps and global charts", 10000, min(50000, len(df)), min(200000, len(df)), step=10000)
+    sample_size = st.slider("Sample size for maps and global charts", 10000, 50000, step=10000)
     year_options = [int(y) for y in sorted(df["Year"].dropna().unique())]
     selected_year = st.selectbox("Year", ["All"] + year_options, index=0)
     selected_day = st.selectbox("Day of week", ["All"] + ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], index=0)
