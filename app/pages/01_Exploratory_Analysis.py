@@ -161,13 +161,17 @@ st.header("1. Crime Distribution")
 filtered_crime_counts = filtered["Primary Type"].value_counts()
 
 st.subheader("Crime frequency by type")
+# FIX 1: Convert to DataFrame for Plotly Express
+crime_counts_df = filtered_crime_counts.reset_index()
+crime_counts_df.columns = ["crime_type", "count"]
 fig_crime = px.bar(
-    x=filtered_crime_counts.values,
-    y=filtered_crime_counts.index,
+    crime_counts_df,
+    x="count",
+    y="crime_type",
     orientation="h",
     title="Crime Count by Primary Type",
-    labels={"x": "Count", "y": "Primary Type"},
-    color=filtered_crime_counts.values,
+    labels={"count": "Count", "crime_type": "Primary Type"},
+    color="count",
     color_continuous_scale="Blues"
 )
 fig_crime.update_layout(yaxis=dict(autorange="reversed"), height=600)
@@ -176,12 +180,14 @@ st.plotly_chart(fig_crime, use_container_width=True)
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("Top 10 Crime Types")
-    top10 = filtered_crime_counts.head(10)
+    top10 = filtered_crime_counts.head(10).reset_index()
+    top10.columns = ["crime_type", "count"]
     fig_top10 = px.bar(
-        x=top10.values,
-        y=top10.index,
+        top10,
+        x="count",
+        y="crime_type",
         orientation="h",
-        labels={"x": "Count", "y": "Crime Type"},
+        labels={"count": "Count", "crime_type": "Crime Type"},
         title="Top 10 Crime Types"
     )
     fig_top10.update_layout(yaxis=dict(autorange="reversed"))
@@ -189,13 +195,15 @@ with col1:
     
 with col2:
     st.subheader("Least Frequent Crime Types")
-    rare10 = filtered_crime_counts[filtered_crime_counts > 0].tail(10)
+    rare10 = filtered_crime_counts[filtered_crime_counts > 0].tail(10).reset_index()
     if len(rare10) > 0:
+        rare10.columns = ["crime_type", "count"]
         fig_rare = px.bar(
-            x=rare10.values,
-            y=rare10.index,
+            rare10,
+            x="count",
+            y="crime_type",
             orientation="h",
-            labels={"x": "Count", "y": "Crime Type"},
+            labels={"count": "Count", "crime_type": "Crime Type"},
             title="Rare Crime Types"
         )
         fig_rare.update_layout(yaxis=dict(autorange="reversed"))
@@ -215,10 +223,15 @@ community_counts = filtered["Community Area"].value_counts().sort_index()
 col1, col2 = st.columns(2)
 with col1:
     if len(district_counts) > 0:
+        # FIX 2: Convert to DataFrame
+        district_df = district_counts.reset_index()
+        district_df.columns = ["district", "count"]
+        district_df["district"] = district_df["district"].astype(str)
         fig_dist = px.bar(
-            x=district_counts.index.astype(str),
-            y=district_counts.values,
-            labels={"x": "District", "y": "Number of Crimes"},
+            district_df,
+            x="district",
+            y="count",
+            labels={"district": "District", "count": "Number of Crimes"},
             title="Crime by Police District",
         )
         st.plotly_chart(fig_dist, use_container_width=True)
@@ -226,11 +239,14 @@ with col1:
 with col2:
     if len(community_counts) > 0:
         # Limit to top 20 communities for readability
-        top_communities = community_counts.head(20)
+        top_communities = community_counts.head(20).reset_index()
+        top_communities.columns = ["community_area", "count"]
+        top_communities["community_area"] = top_communities["community_area"].astype(str)
         fig_comm = px.bar(
-            x=top_communities.index.astype(str),
-            y=top_communities.values,
-            labels={"x": "Community Area", "y": "Number of Crimes"},
+            top_communities,
+            x="community_area",
+            y="count",
+            labels={"community_area": "Community Area", "count": "Number of Crimes"},
             title="Crime by Community Area (Top 20)",
         )
         st.plotly_chart(fig_comm, use_container_width=True)
@@ -239,7 +255,7 @@ with col2:
 @st.cache_data
 def get_map_sample(_filtered, sample_size, random_state=42):
     """Cache map samples for better performance"""
-    map_data = _filtered.dropna(subset=["Latitude", "Longitude"])
+    map_data = _filtered.dropna(subset=["Latitude", "Longitude"]).copy()
     if len(map_data) > sample_size:
         return map_data.sample(n=sample_size, random_state=random_state)
     return map_data
@@ -295,25 +311,33 @@ st.header("3. Temporal Crime Trends")
 # Use filtered aggregations
 crimes_per_year = filtered["Year"].value_counts().sort_index()
 if len(crimes_per_year) > 0:
+    # FIX 3: Convert to DataFrame
+    year_df = crimes_per_year.reset_index()
+    year_df.columns = ["year", "count"]
     fig_year = px.line(
-        x=crimes_per_year.index,
-        y=crimes_per_year.values,
+        year_df,
+        x="year",
+        y="count",
         markers=True,
         title="Total Crimes Per Year",
-        labels={"x": "Year", "y": "Crime Count"}
+        labels={"year": "Year", "count": "Crime Count"}
     )
     st.plotly_chart(fig_year, use_container_width=True)
 
+# FIX 4: Convert month data to DataFrame
 crimes_by_month = filtered["month"].value_counts().reindex(range(1, 13), fill_value=0)
+month_df = crimes_by_month.reset_index()
+month_df.columns = ["month", "count"]
 fig_month = px.bar(
-    x=crimes_by_month.index,
-    y=crimes_by_month.values,
-    labels={"x": "Month", "y": "Number of Crimes"},
+    month_df,
+    x="month",
+    y="count",
+    labels={"month": "Month", "count": "Number of Crimes"},
     title="Crime Volume by Month"
 )
 st.plotly_chart(fig_month, use_container_width=True)
 
-# Year-month heatmap
+# Year-month heatmap (this one is fine - uses go.Heatmap directly)
 year_month_data = filtered.groupby(["Year", "month"]).size().reset_index(name="count")
 if not year_month_data.empty:
     heat = year_month_data.pivot(index="Year", columns="month", values="count").fillna(0)
@@ -333,24 +357,32 @@ if not year_month_data.empty:
     st.plotly_chart(fig_heat, use_container_width=True)
 
 # Day of week and hour patterns
+# FIX 5: Convert day of week data to DataFrame
 crime_by_day = filtered["day_name"].value_counts().reindex(
     ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], fill_value=0
 )
+day_df = crime_by_day.reset_index()
+day_df.columns = ["day_of_week", "count"]
 fig_day = px.bar(
-    x=crime_by_day.index,
-    y=crime_by_day.values,
-    labels={"x": "Day of Week", "y": "Number of Crimes"},
+    day_df,
+    x="day_of_week",
+    y="count",
+    labels={"day_of_week": "Day of Week", "count": "Number of Crimes"},
     title="Crime Counts by Day of Week"
 )
 st.plotly_chart(fig_day, use_container_width=True)
 
+# FIX 6: This was the main error - convert hour data to DataFrame
 crime_by_hour = filtered["hour"].value_counts().sort_index()
+hour_df = crime_by_hour.reset_index()
+hour_df.columns = ["hour", "count"]
 fig_hour = px.line(
-    x=crime_by_hour.index,
-    y=crime_by_hour.values,
+    hour_df,
+    x="hour",
+    y="count",
     markers=True,
     title="Crime Patterns by Hour",
-    labels={"x": "Hour of Day", "y": "Crime Count"}
+    labels={"hour": "Hour of Day", "count": "Crime Count"}
 )
 fig_hour.update_xaxes(tickmode="linear")
 st.plotly_chart(fig_hour, use_container_width=True)
@@ -376,11 +408,15 @@ st.markdown("---")
 
 # 4. Seasonal Analysis
 st.header("4. Seasonal Crime Patterns")
+# FIX 7: Convert season data to DataFrame
 season_counts = filtered["season"].value_counts().reindex(["Winter", "Spring", "Summer", "Fall"], fill_value=0)
+season_df = season_counts.reset_index()
+season_df.columns = ["season", "count"]
 fig_season = px.bar(
-    x=season_counts.index,
-    y=season_counts.values,
-    labels={"x": "Season", "y": "Number of Crimes"},
+    season_df,
+    x="season",
+    y="count",
+    labels={"season": "Season", "count": "Number of Crimes"},
     title="Crime Count by Season"
 )
 st.plotly_chart(fig_season, use_container_width=True)
@@ -403,9 +439,13 @@ domestic_pct.index = [domestic_labels.get(x, str(x)) for x in domestic_pct.index
 col1, col2 = st.columns(2)
 with col1:
     if len(arrest_pct) > 0:
+        # FIX 8: Convert to DataFrame for pie chart (optional but consistent)
+        arrest_df = arrest_pct.reset_index()
+        arrest_df.columns = ["status", "percentage"]
         fig_arrest = px.pie(
-            names=arrest_pct.index,
-            values=arrest_pct.values,
+            arrest_df,
+            names="status",
+            values="percentage",
             title=f"Arrest Rate: {arrest_pct.get('Arrested', 0):.1f}%",
             hole=0.4,
         )
@@ -413,15 +453,19 @@ with col1:
         
 with col2:
     if len(domestic_pct) > 0:
+        # FIX 9: Convert to DataFrame for pie chart
+        domestic_df = domestic_pct.reset_index()
+        domestic_df.columns = ["status", "percentage"]
         fig_domestic = px.pie(
-            names=domestic_pct.index,
-            values=domestic_pct.values,
+            domestic_df,
+            names="status",
+            values="percentage",
             title=f"Domestic Incidents: {domestic_pct.get('Domestic', 0):.1f}%",
             hole=0.4,
         )
         st.plotly_chart(fig_domestic, use_container_width=True)
 
-# Arrest rate by domestic incident
+# Arrest rate by domestic incident (this one already uses DataFrame - fine)
 arrest_domestic = pd.crosstab(filtered["Domestic"], filtered["Arrest"], normalize="index") * 100
 if not arrest_domestic.empty:
     arrest_domestic = arrest_domestic.rename(index={True: "Domestic", False: "Non-Domestic"})
@@ -438,14 +482,18 @@ if not arrest_domestic.empty:
     st.plotly_chart(fig_ad, use_container_width=True)
 
 # Domestic crimes by hour
+# FIX 10: Convert domestic hour data to DataFrame
 domestic_hour = filtered[filtered["Domestic"] == True].groupby("hour").size().reindex(range(24), fill_value=0)
 if domestic_hour.sum() > 0:
+    domestic_hour_df = domestic_hour.reset_index()
+    domestic_hour_df.columns = ["hour", "count"]
     fig_domestic_hour = px.line(
-        x=domestic_hour.index,
-        y=domestic_hour.values,
+        domestic_hour_df,
+        x="hour",
+        y="count",
         markers=True,
         title="Domestic Crimes by Hour",
-        labels={"x": "Hour", "y": "Number of Domestic Crimes"}
+        labels={"hour": "Hour", "count": "Number of Domestic Crimes"}
     )
     fig_domestic_hour.update_xaxes(tickmode="linear")
     st.plotly_chart(fig_domestic_hour, use_container_width=True)
