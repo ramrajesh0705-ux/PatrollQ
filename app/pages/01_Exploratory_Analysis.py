@@ -14,338 +14,524 @@ st.markdown(
 
 @st.cache_data
 def load_data():
+    """Load and preprocess data with optimized dtypes and error handling"""
+    # FIXED: Correct file path
     data_path = "data/processed/crime_cleaned.csv"
     if not os.path.exists(data_path):
+        # Try alternative path
+        alt_path = "crime_cleaned.csv"
+        if os.path.exists(alt_path):
+            data_path = alt_path
+        else:
+            return None
+    
+    try:
+        # Load data with memory optimization
+        df = pd.read_csv(data_path, low_memory=False)
+        
+        # Check if required columns exist
+        required_columns = ["Date", "Primary Type", "Arrest", "Domestic", "Latitude", "Longitude"]
+        missing_cols = [col for col in required_columns if col not in df.columns]
+        if missing_cols:
+            st.error(f"Missing required columns: {missing_cols}")
+            return None
+        
+        # Convert Date column safely
+        if "Date" in df.columns:
+            df["Date"] = pd.to_datetime(df["Date"], format="%d-%m-%Y %H:%M", errors="coerce")
+            # Drop rows with invalid dates
+            initial_len = len(df)
+            df = df.dropna(subset=["Date"])
+            if len(df) < initial_len:
+                st.warning(f"Dropped {initial_len - len(df)} rows with invalid dates")
+        
+        # Convert numeric columns safely
+        if "Latitude" in df.columns:
+            df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
+        if "Longitude" in df.columns:
+            df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
+        
+        # Convert boolean columns safely
+        if "Arrest" in df.columns:
+            df["Arrest"] = df["Arrest"].astype(str).str.upper().map({"TRUE": True, "FALSE": False})
+            df["Arrest"] = df["Arrest"].astype("boolean")  # Use nullable boolean
+        
+        if "Domestic" in df.columns:
+            df["Domestic"] = df["Domestic"].astype(str).str.upper().map({"TRUE": True, "FALSE": False})
+            df["Domestic"] = df["Domestic"].astype("boolean")
+        
+        # Convert categorical columns
+        if "Primary Type" in df.columns:
+            df["Primary Type"] = df["Primary Type"].astype("category")
+        
+        # Handle District and Community Area if they exist
+        if "District" in df.columns:
+            df["District"] = pd.to_numeric(df["District"], errors="coerce").astype("Int64")
+        if "Community Area" in df.columns:
+            df["Community Area"] = pd.to_numeric(df["Community Area"], errors="coerce").astype("Int64")
+        
+        # Add derived columns
+        if "Date" in df.columns:
+            df["month"] = df["Date"].dt.month
+            df["hour"] = df["Date"].dt.hour
+            df["day_name"] = df["Date"].dt.day_name()
+            df["Year"] = df["Date"].dt.year
+        
+        # Define season function
+        def get_season(month: int) -> str:
+            if pd.isna(month):
+                return "Unknown"
+            if month in [12, 1, 2]:
+                return "Winter"
+            if month in [3, 4, 5]:
+                return "Spring"
+            if month in [6, 7, 8]:
+                return "Summer"
+            return "Fall"
+        
+        if "month" in df.columns:
+            df["season"] = df["month"].apply(get_season).astype("category")
+        
+        return df
+    
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
         return None
-    df = pd.read_csv(data_path)
-    df["Date"] = pd.to_datetime(df["Date"], format="%d-%m-%Y %H:%M", errors="coerce")
-    df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
-    df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
-    df["Arrest"] = df["Arrest"].astype(str).str.upper().map({"TRUE": True, "FALSE": False})
-    df["Domestic"] = df["Domestic"].astype(str).str.upper().map({"TRUE": True, "FALSE": False})
-    df["Primary Type"] = df["Primary Type"].astype("category")
-    if "month" not in df.columns and "Date" in df.columns:
-        df["month"] = df["Date"].dt.month
-    if "hour" not in df.columns and "Date" in df.columns:
-        df["hour"] = df["Date"].dt.hour
-    if "day_name" not in df.columns and "Date" in df.columns:
-        df["day_name"] = df["Date"].dt.day_name()
-    if "Year" not in df.columns and "Date" in df.columns:
-        df["Year"] = df["Date"].dt.year
 
-    def get_season(month: int) -> str:
-        if month in [12, 1, 2]:
-            return "Winter"
-        if month in [3, 4, 5]:
-            return "Spring"
-        if month in [6, 7, 8]:
-            return "Summer"
-        return "Fall"
+def validate_dataframe(df, name="DataFrame"):
+    """Helper function to validate DataFrame before operations"""
+    if df is None or len(df) == 0:
+        st.warning(f"{name} is empty. Please adjust filters.")
+        return False
+    return True
 
-    df["season"] = df["month"].apply(get_season)
-    return df
-
-
+# Load data
 df = load_data()
 if df is None:
-    st.error("❌ Could not find preprocesed_data.csv in the app root.")
+    st.error("❌ Could not find crime_cleaned.csv in the data/processed/ directory. Please check file path.")
     st.stop()
 
+# FIXED: Removed undefined precompute_aggregations call
 st.markdown(f"**Dataset loaded:** {len(df):,} records")
 
+# Sidebar filters
 with st.sidebar:
     st.header("Filters")
-    sample_size = st.slider("Sample size for maps and global charts", 10000, 50000, step=10000)
-    year_options = [int(y) for y in sorted(df["Year"].dropna().unique())]
-    selected_year = st.selectbox("Year", ["All"] + year_options, index=0)
-    selected_day = st.selectbox("Day of week", ["All"] + ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], index=0)
+    
+    # Initialize session state
+    if 'sample_size' not in st.session_state:
+        st.session_state.sample_size = min(50000, len(df))
+    
+    # FIXED: Ensure sample_size doesn't exceed available data
+    max_sample = min(50000, len(df))
+    sample_size = st.slider(
+        "Sample size for maps", 
+        10000, 
+        max_sample, 
+        min(st.session_state.sample_size, max_sample), 
+        step=5000,
+        help="Larger samples show more detail but take longer to render"
+    )
+    st.session_state.sample_size = sample_size
+    
+    # FIXED: Handle empty year options
+    year_options = []
+    if "Year" in df.columns:
+        year_options = sorted([int(y) for y in df["Year"].dropna().unique()])
+    
+    selected_year = st.selectbox("Year", ["All"] + year_options, index=0) if year_options else "All"
+    
+    selected_day = st.selectbox(
+        "Day of week", 
+        ["All"] + ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], 
+        index=0
+    )
+    
     selected_season = st.selectbox("Season", ["All", "Winter", "Spring", "Summer", "Fall"], index=0)
 
-filtered = df.copy()
-if selected_year != "All":
-    filtered = filtered[filtered["Year"] == int(selected_year)]
-if selected_day != "All":
-    filtered = filtered[filtered["day_name"] == selected_day]
-if selected_season != "All":
-    filtered = filtered[filtered["season"] == selected_season]
+# Apply filters efficiently
+@st.cache_data
+def apply_filters(_df, year, day, season):
+    """Apply filters with caching and validation"""
+    try:
+        mask = pd.Series([True] * len(_df), index=_df.index)
+        
+        if year != "All" and "Year" in _df.columns:
+            mask &= (_df["Year"] == int(year))
+        
+        if day != "All" and "day_name" in _df.columns:
+            mask &= (_df["day_name"] == day)
+        
+        if season != "All" and "season" in _df.columns:
+            mask &= (_df["season"] == season)
+        
+        filtered_df = _df[mask]
+        return filtered_df
+    except Exception as e:
+        st.error(f"Error applying filters: {str(e)}")
+        return _df
 
-st.markdown("---")
+filtered = apply_filters(df, selected_year, selected_day, selected_season)
 
-# Crime Distribution
-st.header("1. Crime Distribution")
-
-crime_counts = filtered["Primary Type"].value_counts().sort_values(ascending=False)
-if len(crime_counts) == 0:
-    st.warning("No records match the selected filters.")
+# FIXED: Check if filtered data is empty
+if len(filtered) == 0:
+    st.warning("⚠️ No records match the selected filters. Please adjust your filter criteria.")
+    st.info("Try selecting 'All' for some filters to see more data.")
     st.stop()
 
-st.subheader("Crime frequency by type")
-fig_crime = px.bar(
-    x=crime_counts.values,
-    y=crime_counts.index,
-    orientation="h",
-    title="Crime Count by Primary Type",
-    labels={"x": "Count", "y": "Primary Type"},
-    color=crime_counts.values,
-    color_continuous_scale="Blues"
-)
-fig_crime.update_layout(yaxis=dict(autorange="reversed"))
-st.plotly_chart(fig_crime, use_container_width=True)
+st.markdown("---")
 
-col1, col2 = st.columns(2)
-with col1:
-    st.subheader("Top 10 Crime Types")
-    top10 = crime_counts.head(10)
-    fig_top10 = px.bar(
-        x=top10.values,
-        y=top10.index,
-        orientation="h",
-        labels={"x": "Count", "y": "Crime Type"},
-        title="Top 10 Crime Types"
-    )
-    fig_top10.update_layout(yaxis=dict(autorange="reversed"))
-    st.plotly_chart(fig_top10, use_container_width=True)
-with col2:
-    st.subheader("Least Frequent Crime Types")
-    rare10 = crime_counts.tail(10)
-    fig_rare = px.bar(
-        x=rare10.values,
-        y=rare10.index,
-        orientation="h",
-        labels={"x": "Count", "y": "Crime Type"},
-        title="Rare Crime Types"
-    )
-    fig_rare.update_layout(yaxis=dict(autorange="reversed"))
-    st.plotly_chart(fig_rare, use_container_width=True)
+# 1. Crime Distribution
+st.header("1. Crime Distribution")
 
-st.markdown(
-    "Crimes are concentrated among a small number of categories, with property-related offenses like THEFT and BATTERY dominating the dataset."
-)
+# FIXED: Handle missing Primary Type column
+if "Primary Type" not in filtered.columns:
+    st.error("Primary Type column not found in data")
+    st.stop()
+
+filtered_crime_counts = filtered["Primary Type"].value_counts()
+
+if len(filtered_crime_counts) == 0:
+    st.warning("No crime types found in filtered data")
+else:
+    st.subheader("Crime frequency by type")
+    fig_crime = px.bar(
+        x=filtered_crime_counts.values,
+        y=filtered_crime_counts.index,
+        orientation="h",
+        title="Crime Count by Primary Type",
+        labels={"x": "Count", "y": "Primary Type"},
+        color=filtered_crime_counts.values,
+        color_continuous_scale="Blues"
+    )
+    fig_crime.update_layout(yaxis=dict(autorange="reversed"), height=600)
+    st.plotly_chart(fig_crime, use_container_width=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Top 10 Crime Types")
+        top10 = filtered_crime_counts.head(10)
+        if len(top10) > 0:
+            fig_top10 = px.bar(
+                x=top10.values,
+                y=top10.index,
+                orientation="h",
+                labels={"x": "Count", "y": "Crime Type"},
+                title="Top 10 Crime Types"
+            )
+            fig_top10.update_layout(yaxis=dict(autorange="reversed"))
+            st.plotly_chart(fig_top10, use_container_width=True)
+        else:
+            st.info("No data available")
+    
+    with col2:
+        st.subheader("Least Frequent Crime Types")
+        # FIXED: Filter out zero values
+        non_zero_counts = filtered_crime_counts[filtered_crime_counts > 0]
+        rare10 = non_zero_counts.tail(10) if len(non_zero_counts) > 0 else pd.Series()
+        if len(rare10) > 0:
+            fig_rare = px.bar(
+                x=rare10.values,
+                y=rare10.index,
+                orientation="h",
+                labels={"x": "Count", "y": "Crime Type"},
+                title="Rare Crime Types"
+            )
+            fig_rare.update_layout(yaxis=dict(autorange="reversed"))
+            st.plotly_chart(fig_rare, use_container_width=True)
+        else:
+            st.info("No rare crime types identified")
 
 st.markdown("---")
 
-# Geographic Patterns
+# 2. Geographic Patterns
 st.header("2. Geographic Crime Patterns")
 
-st.subheader("Crime distribution by police district and community area")
-
-district_counts = filtered["District"].value_counts().sort_index()
-community_counts = filtered["Community Area"].value_counts().sort_index()
-col1, col2 = st.columns(2)
-with col1:
-    fig_dist = px.bar(
-        x=district_counts.index.astype(str),
-        y=district_counts.values,
-        labels={"x": "District", "y": "Number of Crimes"},
-        title="Crime by Police District",
-    )
-    st.plotly_chart(fig_dist, use_container_width=True)
-with col2:
-    fig_comm = px.bar(
-        x=community_counts.index.astype(str),
-        y=community_counts.values,
-        labels={"x": "Community Area", "y": "Number of Crimes"},
-        title="Crime by Community Area",
-    )
-    st.plotly_chart(fig_comm, use_container_width=True)
-
-st.subheader("Spatial density and location clustering")
-map_sample = filtered.dropna(subset=["Latitude", "Longitude"]).sample(n=min(sample_size, len(filtered)), random_state=42)
-if len(map_sample) > 0:
-    fig_map = px.density_mapbox(
-        map_sample,
-        lat="Latitude",
-        lon="Longitude",
-        radius=10,
-        zoom=10,
-        height=600,
-        title="Crime Density Map",
-    )
-    fig_map.update_layout(mapbox_style="open-street-map")
-    st.plotly_chart(fig_map, use_container_width=True)
-
-    grid = map_sample.copy()
-    grid["lat_bin"] = grid["Latitude"].round(2)
-    grid["lon_bin"] = grid["Longitude"].round(2)
-    grid_counts = grid.groupby(["lat_bin", "lon_bin"]).size().reset_index(name="crime_count")
-    fig_scatter = px.scatter_mapbox(
-        grid_counts,
-        lat="lat_bin",
-        lon="lon_bin",
-        size="crime_count",
-        size_max=15,
-        zoom=10,
-        height=600,
-        title="Crime Location Clusters",
-    )
-    fig_scatter.update_layout(mapbox_style="open-street-map")
-    st.plotly_chart(fig_scatter, use_container_width=True)
+# FIXED: Check for District and Community Area columns
+if "District" in filtered.columns:
+    district_counts = filtered["District"].value_counts().sort_index()
+    if len(district_counts) > 0:
+        fig_dist = px.bar(
+            x=district_counts.index.astype(str),
+            y=district_counts.values,
+            labels={"x": "District", "y": "Number of Crimes"},
+            title="Crime by Police District",
+        )
+        st.plotly_chart(fig_dist, use_container_width=True)
+    else:
+        st.info("No district data available")
 else:
-    st.warning("No latitude/longitude data is available for the selected filters.")
+    st.info("District column not available")
+
+if "Community Area" in filtered.columns:
+    community_counts = filtered["Community Area"].value_counts().sort_index()
+    if len(community_counts) > 0:
+        # Limit to top 20 for readability
+        top_communities = community_counts.head(20)
+        fig_comm = px.bar(
+            x=top_communities.index.astype(str),
+            y=top_communities.values,
+            labels={"x": "Community Area", "y": "Number of Crimes"},
+            title="Crime by Community Area (Top 20)",
+        )
+        st.plotly_chart(fig_comm, use_container_width=True)
+    else:
+        st.info("No community area data available")
+else:
+    st.info("Community Area column not available")
+
+# Maps
+st.subheader("Spatial density and location clustering")
+
+# FIXED: Check for latitude/longitude columns
+if "Latitude" in filtered.columns and "Longitude" in filtered.columns:
+    map_data = filtered.dropna(subset=["Latitude", "Longitude"])
+    
+    if len(map_data) > 0:
+        # FIXED: Ensure sample size doesn't exceed available data
+        actual_sample_size = min(sample_size, len(map_data))
+        map_sample = map_data.sample(n=actual_sample_size, random_state=42) if len(map_data) > actual_sample_size else map_data
+        
+        # Density map
+        fig_map = px.density_mapbox(
+            map_sample,
+            lat="Latitude",
+            lon="Longitude",
+            radius=8,
+            zoom=10,
+            height=500,
+            title=f"Crime Density Map (Sample: {len(map_sample):,} points)",
+        )
+        fig_map.update_layout(mapbox_style="open-street-map")
+        st.plotly_chart(fig_map, use_container_width=True)
+        
+        # Cluster map
+        with st.spinner("Generating cluster map..."):
+            # FIXED: Create copy to avoid modifying original
+            map_sample_copy = map_sample.copy()
+            map_sample_copy["lat_bin"] = map_sample_copy["Latitude"].round(3)
+            map_sample_copy["lon_bin"] = map_sample_copy["Longitude"].round(3)
+            grid_counts = map_sample_copy.groupby(["lat_bin", "lon_bin"]).size().reset_index(name="crime_count")
+            
+            # Limit points for performance
+            if len(grid_counts) > 2000:
+                grid_counts = grid_counts.nlargest(2000, "crime_count")
+            
+            if len(grid_counts) > 0:
+                fig_scatter = px.scatter_mapbox(
+                    grid_counts,
+                    lat="lat_bin",
+                    lon="lon_bin",
+                    size="crime_count",
+                    size_max=12,
+                    zoom=10,
+                    height=500,
+                    title="Crime Location Clusters",
+                )
+                fig_scatter.update_layout(mapbox_style="open-street-map")
+                st.plotly_chart(fig_scatter, use_container_width=True)
+            else:
+                st.info("No clusters identified")
+    else:
+        st.warning("No valid latitude/longitude data available for the selected filters.")
+else:
+    st.warning("Latitude/Longitude columns not available in dataset")
 
 st.markdown("---")
 
-# Temporal Trends
+# 3. Temporal Trends
 st.header("3. Temporal Crime Trends")
 
-st.subheader("Total crimes by year")
-crimes_per_year = filtered["Year"].value_counts().sort_index()
-fig_year = px.line(
-    x=crimes_per_year.index,
-    y=crimes_per_year.values,
-    markers=True,
-    title="Total Crimes Per Year",
-    labels={"x": "Year", "y": "Crime Count"}
-)
-st.plotly_chart(fig_year, use_container_width=True)
+# FIXED: Check for required temporal columns
+if "Year" in filtered.columns and len(filtered["Year"].dropna()) > 0:
+    crimes_per_year = filtered["Year"].value_counts().sort_index()
+    if len(crimes_per_year) > 0:
+        fig_year = px.line(
+            x=crimes_per_year.index,
+            y=crimes_per_year.values,
+            markers=True,
+            title="Total Crimes Per Year",
+            labels={"x": "Year", "y": "Crime Count"}
+        )
+        st.plotly_chart(fig_year, use_container_width=True)
 
-st.subheader("Crimes by month")
-crimes_by_month = filtered["month"].value_counts().reindex(range(1, 13), fill_value=0)
-fig_month = px.bar(
-    x=crimes_by_month.index,
-    y=crimes_by_month.values,
-    labels={"x": "Month", "y": "Number of Crimes"},
-    title="Crime Volume by Month"
-)
-st.plotly_chart(fig_month, use_container_width=True)
+if "month" in filtered.columns:
+    crimes_by_month = filtered["month"].value_counts().reindex(range(1, 13), fill_value=0)
+    if crimes_by_month.sum() > 0:
+        fig_month = px.bar(
+            x=crimes_by_month.index,
+            y=crimes_by_month.values,
+            labels={"x": "Month", "y": "Number of Crimes"},
+            title="Crime Volume by Month"
+        )
+        st.plotly_chart(fig_month, use_container_width=True)
 
-st.subheader("Year-month crime heatmap")
-crimes_per_month = filtered.groupby(["Year", "month"]).size().reset_index(name="count")
-if not crimes_per_month.empty:
-    heat = crimes_per_month.pivot(index="Year", columns="month", values="count").fillna(0)
-    fig_heat = go.Figure(data=go.Heatmap(
-        z=heat.values,
-        x=heat.columns,
-        y=heat.index,
-        colorscale="Viridis",
-        colorbar=dict(title="Count")
-    ))
-    fig_heat.update_layout(
-        title="Crime Trends by Year and Month",
-        xaxis_title="Month",
-        yaxis_title="Year"
+# Year-month heatmap
+if "Year" in filtered.columns and "month" in filtered.columns:
+    year_month_data = filtered.groupby(["Year", "month"]).size().reset_index(name="count")
+    if not year_month_data.empty and len(year_month_data["Year"].unique()) > 1:
+        try:
+            heat = year_month_data.pivot(index="Year", columns="month", values="count").fillna(0)
+            fig_heat = go.Figure(data=go.Heatmap(
+                z=heat.values,
+                x=heat.columns,
+                y=heat.index,
+                colorscale="Viridis",
+                colorbar=dict(title="Count")
+            ))
+            fig_heat.update_layout(
+                title="Crime Trends by Year and Month",
+                xaxis_title="Month",
+                yaxis_title="Year",
+                height=500
+            )
+            st.plotly_chart(fig_heat, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Could not create heatmap: {str(e)}")
+
+# Day of week patterns
+if "day_name" in filtered.columns:
+    crime_by_day = filtered["day_name"].value_counts().reindex(
+        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], fill_value=0
     )
-    st.plotly_chart(fig_heat, use_container_width=True)
-else:
-    st.warning("Not enough data to build the year-month heatmap.")
+    if crime_by_day.sum() > 0:
+        fig_day = px.bar(
+            x=crime_by_day.index,
+            y=crime_by_day.values,
+            labels={"x": "Day of Week", "y": "Number of Crimes"},
+            title="Crime Counts by Day of Week"
+        )
+        st.plotly_chart(fig_day, use_container_width=True)
 
-st.subheader("Crimes by day of week")
-crime_by_day = filtered["day_name"].value_counts().reindex([
-    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
-], fill_value=0)
-fig_day = px.bar(
-    x=crime_by_day.index,
-    y=crime_by_day.values,
-    labels={"x": "Day of Week", "y": "Number of Crimes"},
-    title="Crime Counts by Day of Week"
-)
-st.plotly_chart(fig_day, use_container_width=True)
+# Hour patterns
+if "hour" in filtered.columns:
+    crime_by_hour = filtered["hour"].value_counts().sort_index()
+    if crime_by_hour.sum() > 0:
+        fig_hour = px.line(
+            x=crime_by_hour.index,
+            y=crime_by_hour.values,
+            markers=True,
+            title="Crime Patterns by Hour",
+            labels={"x": "Hour of Day", "y": "Crime Count"}
+        )
+        fig_hour.update_xaxes(tickmode="linear")
+        st.plotly_chart(fig_hour, use_container_width=True)
 
-st.subheader("Crimes by hour of day")
-crime_by_hour = filtered["hour"].value_counts().sort_index()
-fig_hour = px.line(
-    x=crime_by_hour.index,
-    y=crime_by_hour.values,
-    markers=True,
-    title="Crime Patterns by Hour",
-    labels={"x": "Hour of Day", "y": "Crime Count"}
-)
-fig_hour.update_xaxes(tickmode="linear")
-st.plotly_chart(fig_hour, use_container_width=True)
-
-st.subheader("Hourly crime patterns by year")
-crimes_hour_year = filtered.groupby(["Year", "hour"]).size().reset_index(name="count")
-if not crimes_hour_year.empty:
-    fig_hour_year = px.line(
-        crimes_hour_year,
-        x="hour",
-        y="count",
-        color="Year",
-        markers=True,
-        title="Hourly Crimes by Year",
-        labels={"hour": "Hour", "count": "Crime Count", "Year": "Year"}
-    )
-    fig_hour_year.update_xaxes(tickmode="linear")
-    st.plotly_chart(fig_hour_year, use_container_width=True)
-else:
-    st.warning("Not enough hourly data to show crime patterns by year.")
+# Hourly patterns by year (top years)
+if "Year" in filtered.columns and "hour" in filtered.columns:
+    top_years = filtered["Year"].value_counts().head(5).index
+    if len(top_years) > 1:
+        crimes_hour_year = filtered[filtered["Year"].isin(top_years)].groupby(["Year", "hour"]).size().reset_index(name="count")
+        if not crimes_hour_year.empty:
+            fig_hour_year = px.line(
+                crimes_hour_year,
+                x="hour",
+                y="count",
+                color="Year",
+                markers=True,
+                title="Hourly Crimes by Year (Top 5 Years)",
+                labels={"hour": "Hour", "count": "Crime Count", "Year": "Year"}
+            )
+            fig_hour_year.update_xaxes(tickmode="linear")
+            st.plotly_chart(fig_hour_year, use_container_width=True)
 
 st.markdown("---")
 
-# Season Analysis
+# 4. Seasonal Analysis
 st.header("4. Seasonal Crime Patterns")
-season_counts = filtered["season"].value_counts().reindex(["Winter", "Spring", "Summer", "Fall"], fill_value=0)
-fig_season = px.bar(
-    x=season_counts.index,
-    y=season_counts.values,
-    labels={"x": "Season", "y": "Number of Crimes"},
-    title="Crime Count by Season"
-)
-st.plotly_chart(fig_season, use_container_width=True)
-
-st.markdown(
-    "Seasonal analysis shows whether crime volume increases during warm months or dips in winter. "
-    "This helps identify seasonal police resource planning needs."
-)
+if "season" in filtered.columns:
+    season_counts = filtered["season"].value_counts().reindex(["Winter", "Spring", "Summer", "Fall"], fill_value=0)
+    if season_counts.sum() > 0:
+        fig_season = px.bar(
+            x=season_counts.index,
+            y=season_counts.values,
+            labels={"x": "Season", "y": "Number of Crimes"},
+            title="Crime Count by Season"
+        )
+        st.plotly_chart(fig_season, use_container_width=True)
 
 st.markdown("---")
 
-# Arrest and Domestic Analysis
+# 5. Arrest and Domestic Analysis
 st.header("5. Arrest and Domestic Incident Analysis")
 
-arrest_counts = filtered["Arrest"].value_counts().rename(index={True: "Arrested", False: "Not Arrested"})
-arrest_pct = (arrest_counts / arrest_counts.sum() * 100).round(2)
+# FIXED: Handle boolean columns with null values
+if "Arrest" in filtered.columns:
+    arrest_counts = filtered["Arrest"].value_counts(dropna=False)
+    # FIXED: Avoid division by zero
+    if len(arrest_counts) > 0 and arrest_counts.sum() > 0:
+        arrest_pct = (arrest_counts / arrest_counts.sum() * 100).round(2)
+        arrest_labels = {True: "Arrested", False: "Not Arrested"}
+        arrest_pct.index = [arrest_labels.get(x, str(x)) for x in arrest_pct.index]
+        
+        if len(arrest_pct) > 0:
+            fig_arrest = px.pie(
+                names=arrest_pct.index,
+                values=arrest_pct.values,
+                title=f"Arrest Rate: {arrest_pct.get('Arrested', 0):.1f}%",
+                hole=0.4,
+            )
+            st.plotly_chart(fig_arrest, use_container_width=True)
+    else:
+        st.info("No arrest data available")
 
-domestic_counts = filtered["Domestic"].value_counts().rename(index={True: "Domestic", False: "Non-Domestic"})
-domestic_pct = (domestic_counts / domestic_counts.sum() * 100).round(2)
+if "Domestic" in filtered.columns:
+    domestic_counts = filtered["Domestic"].value_counts(dropna=False)
+    if len(domestic_counts) > 0 and domestic_counts.sum() > 0:
+        domestic_pct = (domestic_counts / domestic_counts.sum() * 100).round(2)
+        domestic_labels = {True: "Domestic", False: "Non-Domestic"}
+        domestic_pct.index = [domestic_labels.get(x, str(x)) for x in domestic_pct.index]
+        
+        if len(domestic_pct) > 0:
+            fig_domestic = px.pie(
+                names=domestic_pct.index,
+                values=domestic_pct.values,
+                title=f"Domestic Incidents: {domestic_pct.get('Domestic', 0):.1f}%",
+                hole=0.4,
+            )
+            st.plotly_chart(fig_domestic, use_container_width=True)
+    else:
+        st.info("No domestic incident data available")
 
-col1, col2 = st.columns(2)
-with col1:
-    fig_arrest = px.pie(
-        names=arrest_pct.index,
-        values=arrest_pct.values,
-        title="Arrest Rate Distribution",
-        hole=0.4,
-    )
-    st.plotly_chart(fig_arrest, use_container_width=True)
-with col2:
-    fig_domestic = px.pie(
-        names=domestic_pct.index,
-        values=domestic_pct.values,
-        title="Domestic vs Non-Domestic Distribution",
-        hole=0.4,
-    )
-    st.plotly_chart(fig_domestic, use_container_width=True)
+# Arrest rate by domestic incident
+if "Arrest" in filtered.columns and "Domestic" in filtered.columns:
+    # FIXED: Handle potential empty groups
+    try:
+        arrest_domestic = pd.crosstab(filtered["Domestic"], filtered["Arrest"], normalize="index") * 100
+        if not arrest_domestic.empty and len(arrest_domestic) > 0:
+            arrest_domestic = arrest_domestic.rename(index={True: "Domestic", False: "Non-Domestic"})
+            arrest_domestic.columns = ["Not Arrested" if c is False else "Arrested" for c in arrest_domestic.columns]
+            arrest_domestic = arrest_domestic.reset_index().melt(id_vars="Domestic", var_name="Arrest Status", value_name="Percent")
+            
+            fig_ad = px.bar(
+                arrest_domestic,
+                x="Domestic",
+                y="Percent",
+                color="Arrest Status",
+                title="Arrest Percent by Domestic Incident",
+                barmode="stack",
+            )
+            st.plotly_chart(fig_ad, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not calculate arrest rates: {str(e)}")
 
-st.subheader("Arrest rate by domestic incident")
-arrest_domestic = pd.crosstab(filtered["Domestic"], filtered["Arrest"], normalize="index") * 100
-if not arrest_domestic.empty:
-    arrest_domestic = arrest_domestic.rename(index={True: "Domestic", False: "Non-Domestic"})
-    arrest_domestic.columns = ["Not Arrested" if c is False else "Arrested" for c in arrest_domestic.columns]
-    arrest_domestic = arrest_domestic.reset_index().melt(id_vars="Domestic", var_name="Arrest Status", value_name="Percent")
-    fig_ad = px.bar(
-        arrest_domestic,
-        x="Domestic",
-        y="Percent",
-        color="Arrest Status",
-        title="Arrest Percent by Domestic Incident",
-        barmode="stack",
-    )
-    st.plotly_chart(fig_ad, use_container_width=True)
-else:
-    st.warning("Not enough data to calculate arrest rate by domestic flag.")
-
-st.subheader("Domestic crimes by hour")
-domestic_hour = filtered[filtered["Domestic"] == True].groupby("hour").size().reindex(range(24), fill_value=0)
-fig_domestic_hour = px.line(
-    x=domestic_hour.index,
-    y=domestic_hour.values,
-    markers=True,
-    title="Domestic Crimes by Hour",
-    labels={"x": "Hour", "y": "Number of Domestic Crimes"}
-)
-fig_domestic_hour.update_xaxes(tickmode="linear")
-st.plotly_chart(fig_domestic_hour, use_container_width=True)
+# Domestic crimes by hour
+if "Domestic" in filtered.columns and "hour" in filtered.columns:
+    domestic_crimes = filtered[filtered["Domestic"] == True]
+    if len(domestic_crimes) > 0:
+        domestic_hour = domestic_crimes.groupby("hour").size().reindex(range(24), fill_value=0)
+        if domestic_hour.sum() > 0:
+            fig_domestic_hour = px.line(
+                x=domestic_hour.index,
+                y=domestic_hour.values,
+                markers=True,
+                title="Domestic Crimes by Hour",
+                labels={"x": "hour", "y": "Number of Domestic Crimes"}
+            )
+            fig_domestic_hour.update_xaxes(tickmode="linear")
+            st.plotly_chart(fig_domestic_hour, use_container_width=True)
+    else:
+        st.info("No domestic crimes in filtered data")
 
 st.markdown(
     "Domestic incidents are often concentrated in private locations and may show different hourly patterns than the overall crime profile."
