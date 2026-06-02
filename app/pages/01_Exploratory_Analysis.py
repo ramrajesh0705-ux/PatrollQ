@@ -12,11 +12,10 @@ st.set_page_config(page_title="Exploratory Data Analysis", page_icon="🔎", lay
 st.title("🔎 Chicago Crime Exploratory Analysis")
 st.markdown(
     "This dashboard provides interactive exploration of Chicago crime data. "
-    "Use the controls to filter and analyze crime patterns."
+    "Explore crime patterns across Chicago."
 )
 
-# Memory optimization: Load only necessary columns and sample data
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data
 def load_data():
     data_path = "data/processed/crime_cleaned.csv"
     if not os.path.exists(data_path):
@@ -30,13 +29,13 @@ def load_data():
         'IsWeekend', 'TimeOfDay', 'CrimeSeverity'
     ]
     
-    # Load only needed columns and use smaller dtypes
-    df = pd.read_csv(data_path, usecols=required_columns, low_memory=False)
+    # Load only needed columns
+    df = pd.read_csv(data_path, usecols=required_columns, low_memory=False, nrows=500000)
     
     # Convert Date
     df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y %H:%M', errors='coerce')
     
-    # Convert numeric columns to smaller dtypes for memory efficiency
+    # Convert numeric columns
     df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
     df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
     
@@ -59,7 +58,7 @@ def load_data():
     df['TimeOfDay'] = df['TimeOfDay'].astype('category')
     df['CrimeSeverity'] = df['CrimeSeverity'].astype('category')
     
-    # Drop rows with null dates (essential for time analysis)
+    # Drop rows with null dates
     df = df.dropna(subset=['Date'])
     
     return df
@@ -74,68 +73,7 @@ if df is None:
     st.stop()
 
 # Show dataset info
-st.markdown(f"**Dataset loaded:** {len(df):,} records")
-
-# Memory-efficient sampling for large datasets
-@st.cache_data(ttl=3600)
-def get_sample_for_viz(df, sample_size):
-    if len(df) > sample_size:
-        return df.sample(n=sample_size, random_state=42)
-    return df
-
-# Sidebar filters - optimized with session state
-with st.sidebar:
-    st.header("🔍 Filters")
-    
-    # Sample size control - adjust based on available memory
-    sample_size = st.slider(
-        "Sample size for maps", 
-        min_value=5000, 
-        max_value=30000, 
-        value=10000, 
-        step=5000,
-        help="Lower values improve performance"
-    )
-    
-    # Get unique values for filters (using dropna for memory)
-    years = sorted(df['Year'].dropna().unique())
-    selected_year = st.selectbox("Year", ["All"] + list(years), index=0)
-    
-    days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    available_days = [d for d in days if d in df['DayOfWeek'].values]
-    selected_day = st.selectbox("Day of week", ["All"] + available_days, index=0)
-    
-    # Crime type filter with search
-    crime_types = sorted(df['Primary Type'].dropna().unique())
-    selected_crime = st.selectbox("Crime Type", ["All"] + crime_types, index=0)
-    
-    # Severity filter
-    severities = sorted(df['CrimeSeverity'].dropna().unique())
-    selected_severity = st.selectbox("Crime Severity", ["All"] + severities, index=0)
-    
-    st.markdown("---")
-    st.caption(f"Memory optimized mode | Sample size: {sample_size:,}")
-
-# Apply filters efficiently
-filtered = df.copy()
-
-if selected_year != "All":
-    filtered = filtered[filtered['Year'] == int(selected_year)]
-
-if selected_day != "All":
-    filtered = filtered[filtered['DayOfWeek'] == selected_day]
-
-if selected_crime != "All":
-    filtered = filtered[filtered['Primary Type'] == selected_crime]
-
-if selected_severity != "All":
-    filtered = filtered[filtered['CrimeSeverity'] == selected_severity]
-
-if len(filtered) == 0:
-    st.warning("⚠️ No records match the selected filters. Please adjust your selections.")
-    st.stop()
-
-st.markdown(f"**Showing:** {len(filtered):,} records after filtering")
+st.markdown(f"**Dataset loaded:** {len(df):,} records (first 500,000 rows)")
 
 st.markdown("---")
 
@@ -145,8 +83,7 @@ st.markdown("---")
 
 st.header("📊 1. Crime Distribution Analysis")
 
-# Optimize: Use value_counts efficiently
-crime_counts = filtered['Primary Type'].value_counts()
+crime_counts = df['Primary Type'].value_counts()
 
 col1, col2 = st.columns([2, 1])
 
@@ -202,7 +139,7 @@ st.markdown("---")
 
 st.header("⚠️ 2. Crime Severity Analysis")
 
-severity_counts = filtered['CrimeSeverity'].value_counts()
+severity_counts = df['CrimeSeverity'].value_counts()
 fig_severity = px.pie(
     values=severity_counts.values,
     names=severity_counts.index,
@@ -224,7 +161,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Crime by Police District")
-    district_counts = filtered['District'].value_counts().sort_index()
+    district_counts = df['District'].value_counts().sort_index()
     fig_dist = px.bar(
         x=district_counts.index.astype(str),
         y=district_counts.values,
@@ -237,8 +174,7 @@ with col1:
 
 with col2:
     st.subheader("Crime by Community Area")
-    # Limit to top 20 community areas for readability
-    community_counts = filtered['Community Area'].value_counts().head(20)
+    community_counts = df['Community Area'].value_counts().head(20)
     fig_comm = px.bar(
         x=community_counts.index.astype(str),
         y=community_counts.values,
@@ -249,27 +185,28 @@ with col2:
     )
     st.plotly_chart(fig_comm, use_container_width=True)
 
-# Crime density map - use sampled data for performance
-st.subheader("Crime Density Map")
-map_sample = filtered.dropna(subset=['Latitude', 'Longitude'])
-map_sample = get_sample_for_viz(map_sample, sample_size)
+# Scatter map for crime locations (replacing density map)
+st.subheader("Crime Location Map")
+map_data = df.dropna(subset=['Latitude', 'Longitude']).sample(n=min(10000, len(df)), random_state=42)
 
-if len(map_sample) > 100:
-    fig_map = px.density_mapbox(
-        map_sample,
+if len(map_data) > 100:
+    fig_scatter = px.scatter_mapbox(
+        map_data,
         lat='Latitude',
         lon='Longitude',
-        radius=8,
+        color='Primary Type',
+        size_max=8,
         zoom=10,
-        height=500,
-        title="Geographic Crime Density",
+        height=600,
+        title="Crime Locations Map (Sampled)",
         mapbox_style="open-street-map",
-        opacity=0.7
+        opacity=0.6,
+        hover_data=['Primary Type', 'Description', 'District']
     )
-    fig_map.update_layout(margin=dict(l=0, r=0, t=30, b=0))
-    st.plotly_chart(fig_map, use_container_width=True)
+    fig_scatter.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+    st.plotly_chart(fig_scatter, use_container_width=True)
 else:
-    st.info("Insufficient location data for density map.")
+    st.info("Insufficient location data for map visualization.")
 
 st.markdown("---")
 
@@ -283,7 +220,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Crimes by Year")
-    year_counts = filtered['Year'].value_counts().sort_index()
+    year_counts = df['Year'].value_counts().sort_index()
     fig_year = px.line(
         x=year_counts.index,
         y=year_counts.values,
@@ -295,7 +232,7 @@ with col1:
 
 with col2:
     st.subheader("Crimes by Month")
-    month_counts = filtered['Month'].value_counts().sort_index()
+    month_counts = df['Month'].value_counts().sort_index()
     fig_month = px.bar(
         x=month_counts.index,
         y=month_counts.values,
@@ -307,7 +244,7 @@ with col2:
     st.plotly_chart(fig_month, use_container_width=True)
 
 st.subheader("Crime by Hour of Day")
-hour_counts = filtered['Hour'].value_counts().sort_index()
+hour_counts = df['Hour'].value_counts().sort_index()
 fig_hour = px.line(
     x=hour_counts.index,
     y=hour_counts.values,
@@ -319,7 +256,7 @@ fig_hour.update_xaxes(tickmode='linear', dtick=2)
 st.plotly_chart(fig_hour, use_container_width=True)
 
 st.subheader("Time of Day Distribution")
-time_counts = filtered['TimeOfDay'].value_counts()
+time_counts = df['TimeOfDay'].value_counts()
 time_order = ['Early Morning', 'Morning', 'Afternoon', 'Evening', 'Late Night']
 time_counts = time_counts.reindex([t for t in time_order if t in time_counts.index])
 fig_time = px.bar(
@@ -340,9 +277,9 @@ st.markdown("---")
 
 st.header("📆 5. Weekend vs Weekday Analysis")
 
-weekend_counts = filtered['IsWeekend'].value_counts()
+weekend_counts = df['IsWeekend'].value_counts()
 weekend_labels = {0: 'Weekday', 1: 'Weekend'}
-weekend_counts.index = weekend_labels.get(weekend_counts.index[0], weekend_counts.index[0]) if len(weekend_counts) > 0 else weekend_counts.index
+weekend_counts.index = [weekend_labels.get(i, str(i)) for i in weekend_counts.index]
 
 fig_weekend = px.pie(
     values=weekend_counts.values,
@@ -354,25 +291,24 @@ fig_weekend = px.pie(
 st.plotly_chart(fig_weekend, use_container_width=True)
 
 # Hourly comparison - weekday vs weekend
-if 'IsWeekend' in filtered.columns:
-    hourly_weekday = filtered[filtered['IsWeekend'] == 0].groupby('Hour').size()
-    hourly_weekend = filtered[filtered['IsWeekend'] == 1].groupby('Hour').size()
-    
-    hourly_compare = pd.DataFrame({
-        'Weekday': hourly_weekday.reindex(range(24), fill_value=0),
-        'Weekend': hourly_weekend.reindex(range(24), fill_value=0)
-    })
-    
-    fig_compare = px.line(
-        hourly_compare,
-        x=hourly_compare.index,
-        y=['Weekday', 'Weekend'],
-        markers=True,
-        title="Hourly Crime Patterns: Weekday vs Weekend",
-        labels={'x': 'Hour of Day', 'value': 'Number of Crimes', 'variable': 'Day Type'}
-    )
-    fig_compare.update_xaxes(tickmode='linear', dtick=2)
-    st.plotly_chart(fig_compare, use_container_width=True)
+hourly_weekday = df[df['IsWeekend'] == 0].groupby('Hour').size()
+hourly_weekend = df[df['IsWeekend'] == 1].groupby('Hour').size()
+
+hourly_compare = pd.DataFrame({
+    'Weekday': hourly_weekday.reindex(range(24), fill_value=0),
+    'Weekend': hourly_weekend.reindex(range(24), fill_value=0)
+})
+
+fig_compare = px.line(
+    hourly_compare,
+    x=hourly_compare.index,
+    y=['Weekday', 'Weekend'],
+    markers=True,
+    title="Hourly Crime Patterns: Weekday vs Weekend",
+    labels={'x': 'Hour of Day', 'value': 'Number of Crimes', 'variable': 'Day Type'}
+)
+fig_compare.update_xaxes(tickmode='linear', dtick=2)
+st.plotly_chart(fig_compare, use_container_width=True)
 
 st.markdown("---")
 
@@ -386,7 +322,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Arrest Rate")
-    arrest_counts = filtered['Arrest'].value_counts()
+    arrest_counts = df['Arrest'].value_counts()
     arrest_labels = {True: 'Arrest Made', False: 'No Arrest'}
     arrest_counts.index = [arrest_labels.get(i, str(i)) for i in arrest_counts.index]
     fig_arrest = px.pie(
@@ -400,7 +336,7 @@ with col1:
 
 with col2:
     st.subheader("Domestic Incidents")
-    domestic_counts = filtered['Domestic'].value_counts()
+    domestic_counts = df['Domestic'].value_counts()
     domestic_labels = {True: 'Domestic', False: 'Non-Domestic'}
     domestic_counts.index = [domestic_labels.get(i, str(i)) for i in domestic_counts.index]
     fig_domestic = px.pie(
@@ -414,7 +350,7 @@ with col2:
 
 # Cross-tabulation for arrest rate by domestic status
 st.subheader("Arrest Rate by Domestic Incident Type")
-arrest_by_domestic = pd.crosstab(filtered['Domestic'], filtered['Arrest'], normalize='index') * 100
+arrest_by_domestic = pd.crosstab(df['Domestic'], df['Arrest'], normalize='index') * 100
 arrest_by_domestic.columns = ['Not Arrested' if c is False else 'Arrested' for c in arrest_by_domestic.columns]
 arrest_by_domestic.index = ['Non-Domestic' if i is False else 'Domestic' for i in arrest_by_domestic.index]
 
@@ -430,7 +366,7 @@ st.plotly_chart(fig_ad, use_container_width=True)
 
 # Domestic incidents by time of day
 st.subheader("Domestic Incidents by Time of Day")
-domestic_by_time = filtered[filtered['Domestic'] == True]['TimeOfDay'].value_counts()
+domestic_by_time = df[df['Domestic'] == True]['TimeOfDay'].value_counts()
 domestic_by_time = domestic_by_time.reindex([t for t in time_order if t in domestic_by_time.index])
 fig_domestic_time = px.bar(
     x=domestic_by_time.index,
@@ -451,7 +387,7 @@ st.markdown("---")
 st.header("🏢 7. Crime Location Analysis")
 
 st.subheader("Top Crime Locations")
-location_counts = filtered['Location Description'].value_counts().head(15)
+location_counts = df['Location Description'].value_counts().head(15)
 fig_location = px.bar(
     x=location_counts.values,
     y=location_counts.index,
@@ -473,8 +409,8 @@ st.markdown("---")
 st.header("📍 8. Crime Severity by Location Type")
 
 # Sample for performance
-location_severity_sample = filtered.groupby(['Location Description', 'CrimeSeverity']).size().reset_index(name='count')
-top_locations = filtered['Location Description'].value_counts().head(10).index
+location_severity_sample = df.groupby(['Location Description', 'CrimeSeverity']).size().reset_index(name='count')
+top_locations = df['Location Description'].value_counts().head(10).index
 location_severity_top = location_severity_sample[location_severity_sample['Location Description'].isin(top_locations)]
 
 if len(location_severity_top) > 0:
@@ -503,17 +439,17 @@ st.header("📈 9. Summary Statistics")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("Total Records", f"{len(filtered):,}")
+    st.metric("Total Records", f"{len(df):,}")
 
 with col2:
-    st.metric("Unique Crime Types", filtered['Primary Type'].nunique())
+    st.metric("Unique Crime Types", df['Primary Type'].nunique())
 
 with col3:
-    arrest_rate = (filtered['Arrest'].sum() / len(filtered) * 100) if len(filtered) > 0 else 0
+    arrest_rate = (df['Arrest'].sum() / len(df) * 100) if len(df) > 0 else 0
     st.metric("Overall Arrest Rate", f"{arrest_rate:.1f}%")
 
 with col4:
-    domestic_rate = (filtered['Domestic'].sum() / len(filtered) * 100) if len(filtered) > 0 else 0
+    domestic_rate = (df['Domestic'].sum() / len(df) * 100) if len(df) > 0 else 0
     st.metric("Domestic Incident Rate", f"{domestic_rate:.1f}%")
 
-st.success("✅ Exploratory analysis dashboard loaded successfully! Use the sidebar filters to explore different data segments.")
+st.success("✅ Exploratory analysis dashboard loaded successfully!")
