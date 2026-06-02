@@ -17,20 +17,9 @@ st.markdown(
 
 @st.cache_data
 def load_data():
-    data_path = "data/processed/crime_cleaned.csv"
-    if not os.path.exists(data_path):
-        return None
+    #data_path = "data/processed/crime_cleaned.csv"
     
-    # Define required columns explicitly for memory efficiency
-    required_columns = [
-        'Date', 'Block', 'Primary Type', 'Description', 'Location Description',
-        'Arrest', 'Domestic', 'Beat', 'District', 'Ward', 'Community Area',
-        'Year', 'Latitude', 'Longitude', 'Hour', 'DayOfWeek', 'Month',
-        'IsWeekend', 'TimeOfDay', 'CrimeSeverity'
-    ]
-    
-    # Load only needed columns
-    df = pd.read_csv(data_path, usecols=required_columns, low_memory=False, nrows=500000)
+    df = pd.read_csv("data/processed/crime_cleaned.csv")
     
     # Convert Date
     df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y %H:%M', errors='coerce')
