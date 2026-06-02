@@ -17,84 +17,150 @@ st.markdown(
 
 @st.cache_data
 def load_data():
-    data_path = "data/processed/crime_cleaned.csv"
+    # Try multiple possible file locations
+    possible_paths = [
+        "data/processed/crime_cleaned.csv",
+        "data/raw/Crimes_-_2001_to_Present.csv",
+        "Crimes_-_2001_to_Present.csv",
+        "chicago_crime.csv"
+    ]
     
-    # Check if file exists
-    if not os.path.exists(data_path):
-        st.error(f"File not found: {data_path}")
+    data_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            data_path = path
+            break
+    
+    if data_path is None:
+        st.error("❌ Crime data file not found. Please place the CSV file in the current directory.")
+        st.info("You can download Chicago crime data from: https://data.cityofchicago.org/Public-Safety/Crimes-2001-to-Present/ijzp-q8t2")
         return None
     
     try:
-        # First, read the CSV without any processing to check it exists
-        df = pd.read_csv(data_path)
-        st.info(f"Raw data loaded: {len(df)} rows, {len(df.columns)} columns")
+        # Load data with low_memory=False to handle mixed types
+        df = pd.read_csv(data_path, low_memory=False)
+        st.success(f"✅ Raw data loaded: {len(df):,} rows, {len(df.columns)} columns")
         
-        # Display column names for debugging (in expander)
-        with st.expander("Debug: Show column names"):
+        # Display column names for debugging
+        with st.expander("🔍 Debug: Show column names"):
             st.write(df.columns.tolist())
         
-        # Check if required columns exist
-        required_cols = ['Date', 'Primary Type', 'Arrest', 'Domestic', 'Latitude', 'Longitude']
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            st.error(f"Missing columns: {missing_cols}")
-            # Try to find similar column names
-            for col in missing_cols:
-                similar = [c for c in df.columns if col.lower() in c.lower()]
-                if similar:
-                    st.write(f"Did you mean: {similar} for '{col}'?")
+        # --- FIX: Handle Chicago Crime Dataset specific columns ---
+        # Check for different possible date column names
+        date_column = None
+        for col in ['Date', 'Occurred Date', 'Incident Date', 'Date of Occurrence']:
+            if col in df.columns:
+                date_column = col
+                break
+        
+        if date_column is None:
+            st.error(f"No date column found. Available columns: {df.columns.tolist()[:10]}...")
             return None
         
-        # Process Date column
-        if 'Date' in df.columns:
-            # Try multiple date formats
-            try:
-                df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y %H:%M', errors='coerce')
-            except:
-                try:
-                    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-                except:
-                    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+        st.info(f"Using date column: '{date_column}'")
+        
+        # Parse dates with Chicago dataset format (MM/DD/YYYY HH:MM:SS AM/PM)
+        try:
+            # First, convert to string and clean
+            df['Date_parsed'] = pd.to_datetime(
+                df[date_column], 
+                format='%m/%d/%Y %I:%M:%S %p',  # Chicago format: 01/01/2023 12:05:00 PM
+                errors='coerce'
+            )
+            
+            # If that fails, try without time
+            if df['Date_parsed'].isna().all():
+                df['Date_parsed'] = pd.to_datetime(
+                    df[date_column],
+                    format='%m/%d/%Y',
+                    errors='coerce'
+                )
+            
+            # Final fallback - let pandas infer
+            if df['Date_parsed'].isna().all():
+                df['Date_parsed'] = pd.to_datetime(df[date_column], errors='coerce')
+                
+        except Exception as e:
+            st.warning(f"Date parsing with specific format failed, trying automatic: {str(e)}")
+            df['Date_parsed'] = pd.to_datetime(df[date_column], errors='coerce')
+        
+        # Drop rows with invalid dates
+        initial_len = len(df)
+        df = df.dropna(subset=['Date_parsed'])
+        st.info(f"🗑️ Dropped {initial_len - len(df):,} rows with invalid dates")
+        
+        if len(df) == 0:
+            st.error("❌ No valid records after processing. Please check your data format.")
+            # Show sample of date values for debugging
+            with st.expander("Debug: Sample of original date values"):
+                st.write(df[date_column].head(20).tolist())
+            return None
+        
+        # Extract temporal features
+        df['Year'] = df['Date_parsed'].dt.year
+        df['Month'] = df['Date_parsed'].dt.month
+        df['Day'] = df['Date_parsed'].dt.day
+        df['Hour'] = df['Date_parsed'].dt.hour
+        df['DayOfWeek'] = df['Date_parsed'].dt.dayofweek
+        
+        # Add time of day categorization
+        def get_time_of_day(hour):
+            if 0 <= hour < 5:
+                return 'Late Night'
+            elif 5 <= hour < 12:
+                return 'Morning'
+            elif 12 <= hour < 17:
+                return 'Afternoon'
+            elif 17 <= hour < 21:
+                return 'Evening'
+            else:
+                return 'Late Night'
+        
+        df['TimeOfDay'] = df['Hour'].apply(get_time_of_day)
+        
+        # Add weekend indicator
+        df['IsWeekend'] = df['DayOfWeek'].isin([5, 6])  # Saturday=5, Sunday=6
+        
+        # Map crime types to severity levels
+        severity_map = {
+            'HOMICIDE': 'High',
+            'ASSAULT': 'Medium',
+            'BATTERY': 'Medium',
+            'ROBBERY': 'High',
+            'BURGLARY': 'Medium',
+            'THEFT': 'Low',
+            'MOTOR VEHICLE THEFT': 'Medium',
+            'CRIMINAL DAMAGE': 'Low',
+            'NARCOTICS': 'Low',
+            'OTHER OFFENSE': 'Low'
+        }
+        
+        if 'Primary Type' in df.columns:
+            df['Primary Type'] = df['Primary Type'].astype(str).str.upper()
+            df['CrimeSeverity'] = df['Primary Type'].map(severity_map).fillna('Low')
         
         # Convert numeric columns
-        numeric_cols = ['Latitude', 'Longitude', 'Year', 'Month', 'Hour', 'District', 'Community Area', 'Beat', 'Ward']
+        numeric_cols = ['Latitude', 'Longitude', 'District', 'Community Area', 'Beat', 'Ward']
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # Convert boolean columns - handle various formats
+        # Convert boolean columns
         if 'Arrest' in df.columns:
-            df['Arrest'] = df['Arrest'].astype(str).str.upper()
-            df['Arrest'] = df['Arrest'].map({'TRUE': True, 'FALSE': False, '1': True, '0': False, 'YES': True, 'NO': False})
-            df['Arrest'] = df['Arrest'].fillna(False)
+            df['Arrest'] = df['Arrest'].astype(str).str.upper().isin(['TRUE', '1', 'YES', 'T'])
         
         if 'Domestic' in df.columns:
-            df['Domestic'] = df['Domestic'].astype(str).str.upper()
-            df['Domestic'] = df['Domestic'].map({'TRUE': True, 'FALSE': False, '1': True, '0': False, 'YES': True, 'NO': False})
-            df['Domestic'] = df['Domestic'].fillna(False)
+            df['Domestic'] = df['Domestic'].astype(str).str.upper().isin(['TRUE', '1', 'YES', 'T'])
         
-        # Categorical columns
-        cat_cols = ['Primary Type', 'DayOfWeek', 'TimeOfDay', 'CrimeSeverity', 'Location Description']
-        for col in cat_cols:
-            if col in df.columns:
-                df[col] = df[col].astype('category')
+        st.success(f"✅ Successfully processed {len(df):,} crime records")
         
-        # Drop rows with null dates only if Date column exists
-        if 'Date' in df.columns:
-            initial_len = len(df)
-            df = df.dropna(subset=['Date'])
-            st.info(f"Dropped {initial_len - len(df)} rows with invalid dates")
-        
-        if len(df) == 0:
-            st.error("No valid records after processing. Please check your data format.")
-            return None
-            
         return df
         
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
         return None
-
 
 # Load data
 with st.spinner("Loading crime data... This may take a moment."):
@@ -105,7 +171,7 @@ if df is None or len(df) == 0:
     st.stop()
 
 # Show dataset info
-st.markdown(f"**Dataset loaded:** {len(df):,} records")
+st.markdown(f"**📊 Dataset loaded:** {len(df):,} records from {df['Year'].min()} to {df['Year'].max()}")
 
 st.markdown("---")
 
@@ -451,70 +517,4 @@ if 'Location Description' in df.columns:
             y=location_counts.index,
             orientation='h',
             title="Top 15 Locations Where Crimes Occur",
-            labels={'x': 'Number of Crimes', 'y': 'Location Description'},
-            color=location_counts.values,
-            color_continuous_scale='Viridis'
-        )
-        fig_location.update_layout(yaxis=dict(autorange="reversed"), height=500)
-        st.plotly_chart(fig_location, use_container_width=True)
-    
-    st.markdown("---")
-
-# ============================================================================
-# 8. CRIME SEVERITY BY LOCATION
-# ============================================================================
-
-if 'Location Description' in df.columns and 'CrimeSeverity' in df.columns:
-    st.header("📍 8. Crime Severity by Location Type")
-    
-    try:
-        # Sample for performance
-        location_severity_sample = df.groupby(['Location Description', 'CrimeSeverity']).size().reset_index(name='count')
-        top_locations = df['Location Description'].value_counts().head(10).index
-        location_severity_top = location_severity_sample[location_severity_sample['Location Description'].isin(top_locations)]
-        
-        if len(location_severity_top) > 0:
-            fig_severity_loc = px.bar(
-                location_severity_top,
-                x='Location Description',
-                y='count',
-                color='CrimeSeverity',
-                title="Crime Severity Distribution by Location Type (Top 10 Locations)",
-                labels={'count': 'Number of Crimes', 'Location Description': 'Location'},
-                barmode='stack'
-            )
-            fig_severity_loc.update_layout(xaxis_tickangle=-45)
-            st.plotly_chart(fig_severity_loc, use_container_width=True)
-        else:
-            st.info("Insufficient data for severity by location analysis.")
-    except Exception as e:
-        st.warning(f"Could not create severity by location chart: {str(e)}")
-
-st.markdown("---")
-
-# ============================================================================
-# SUMMARY STATISTICS
-# ============================================================================
-
-st.header("📈 9. Summary Statistics")
-
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.metric("Total Records", f"{len(df):,}")
-
-with col2:
-    if 'Primary Type' in df.columns:
-        st.metric("Unique Crime Types", df['Primary Type'].nunique())
-
-with col3:
-    if 'Arrest' in df.columns:
-        arrest_rate = (df['Arrest'].sum() / len(df) * 100) if len(df) > 0 else 0
-        st.metric("Overall Arrest Rate", f"{arrest_rate:.1f}%")
-
-with col4:
-    if 'Domestic' in df.columns:
-        domestic_rate = (df['Domestic'].sum() / len(df) * 100) if len(df) > 0 else 0
-        st.metric("Domestic Incident Rate", f"{domestic_rate:.1f}%")
-
-st.success("✅ Exploratory analysis dashboard loaded successfully!")
+            labels={'x': 'Number of Crim
