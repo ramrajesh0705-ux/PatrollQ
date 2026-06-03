@@ -4,9 +4,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="Exploratory Data Analysis", page_icon="🔎", layout="wide")
+st.set_page_config(page_title="Exploratory Data Analysis", page_icon="ðﾟﾔﾎ", layout="wide")
 
-st.title("🔎 Chicago Crime Exploratory Analysis")
+st.title("Chicago Crime Exploratory Analysis")
 st.markdown(
     "This page converts the exploratory notebook into an interactive Streamlit dashboard. "
     "Use the controls to filter the dataset and explore crime patterns by type, geography, time, arrest status, and domestic incidents."
@@ -23,7 +23,7 @@ def load_data():
     df["Arrest"] = df["Arrest"].astype(str).str.upper().map({"TRUE": True, "FALSE": False})
     df["Domestic"] = df["Domestic"].astype(str).str.upper().map({"TRUE": True, "FALSE": False})
     df["Primary Type"] = df["Primary Type"].astype("category")
-
+    
     def get_season(month: int) -> str:
         if month in [12, 1, 2]:
             return "Winter"
@@ -46,7 +46,7 @@ st.markdown(f"**Dataset loaded:** {len(df):,} records")
 
 with st.sidebar:
     st.header("Filters")
-    sample_size = st.slider("Sample size for maps and global charts", 10000, 50000, step=10000)
+    sample_size = st.slider("Sample size for maps and global charts", 10000, min(50000, len(df)), min(200000, len(df)), step=10000)
     year_options = [int(y) for y in sorted(df["Year"].dropna().unique())]
     selected_year = st.selectbox("Year", ["All"] + year_options, index=0)
     selected_day = st.selectbox("Day of week", ["All"] + ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], index=0)
@@ -61,7 +61,9 @@ if selected_season != "All":
     filtered = filtered[filtered["season"] == selected_season]
 
 st.markdown("---")
-
+st.header("list of columns")
+st.write(filtered.columns)
+st.markdown("----")
 # Crime Distribution
 st.header("1. Crime Distribution")
 
@@ -140,7 +142,6 @@ with col2:
     )
     st.plotly_chart(fig_comm, use_container_width=True)
 
-st.subheader("Spatial density and location clustering")
 map_sample = filtered.dropna(subset=["Latitude", "Longitude"]).sample(n=min(sample_size, len(filtered)), random_state=42)
 if len(map_sample) > 0:
     fig_map = px.density_mapbox(
@@ -191,14 +192,9 @@ fig_month = px.bar(
     labels={"x": "Month", "y": "Number of Crimes"},
     title="Crime Volume by Month"
 )
-fig_month.show()
 st.plotly_chart(fig_month, use_container_width=True)
 
 st.subheader("Year-month crime heatmap")
-import calendar
-import plotly.graph_objects as go
-import streamlit as st
-
 # Create list of month names: ['Jan', 'Feb', ..., 'Dec']
 month_names = list(calendar.month_abbr)[1:]
 
@@ -228,11 +224,7 @@ if not crimes_per_month.empty:
 else:
     st.warning("Not enough data to build the year-month heatmap.")
 
-import plotly.express as px
-import streamlit as st
-
 st.subheader("Crimes by day of week")
-
 # Lists for reindexing and renaming
 days_long = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 days_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -250,6 +242,7 @@ fig_day = px.bar(
     title="Crime Counts by Day of Week"
 )
 st.plotly_chart(fig_day, use_container_width=True)
+
 st.subheader("Crimes by hour of day")
 crime_by_hour = filtered["Hour"].value_counts().sort_index()
 fig_hour = px.line(
@@ -261,6 +254,19 @@ fig_hour = px.line(
 )
 fig_hour.update_xaxes(tickmode="linear")
 st.plotly_chart(fig_hour, use_container_width=True)
+
+st.subheader("Crimes by hour of day")
+crime_by_hour = filtered["TimeOfDay"].value_counts().sort_index()
+fig_hour = px.line(
+    x=crime_by_hour.index,
+    y=crime_by_hour.values,
+    markers=True,
+    title="Crime Patterns by Hour",
+    labels={"x": "Hour of Day", "y": "Crime Count"}
+)
+fig_hour.update_xaxes(tickmode="linear")
+st.plotly_chart(fig_hour, use_container_width=True)
+
 
 st.markdown("---")
 
@@ -344,7 +350,3 @@ st.markdown(
 )
 
 st.success("✅ Exploratory analysis dashboard loaded successfully!")
-
-
-
-
