@@ -228,7 +228,15 @@ st.subheader("Crimes by day of week")
 # Lists for reindexing and renaming
 days_long = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 days_short = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-
+day_of_week_dict = {
+    0: "Sunday",
+    1: "Monday",
+    2: "Tuesday",
+    3: "Wednesday",
+    4: "Thursday",
+    5: "Friday",
+    6: "Saturday"
+}
 # Map the numeric DayOfWeek to day names
 filtered['DayOfWeek'] = filtered['DayOfWeek'].map(day_of_week_dict)
 
