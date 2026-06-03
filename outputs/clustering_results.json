@@ -44,8 +44,8 @@
         }
     ],
     "best_kmeans": {
-        "k": 5,
-        "silhouette_score": 0.39656080461003024
+        "k": 10,
+        "silhouette_score": 0.41202569875940637
     },
     "dbscan_results": {
         "silhouette_score": 0.8952756996815746
