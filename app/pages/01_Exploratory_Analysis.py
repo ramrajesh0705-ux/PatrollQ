@@ -11,8 +11,6 @@ st.markdown(
     "This page converts the exploratory notebook into an interactive Streamlit dashboard. "
     "Use the controls to filter the dataset and explore crime patterns by type, geography, time, arrest status, and domestic incidents."
 )
-required_columns = Date,Block,Primary Type,Description,Location Description,Arrest,Domestic,Beat,District,Ward,Community Area,Year,Latitude,Longitude,Hour,DayOfWeek,Month,IsWeekend,TimeOfDay,CrimeSeverity
-
 
 @st.cache_data
 def load_data():
