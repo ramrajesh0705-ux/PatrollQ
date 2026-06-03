@@ -142,7 +142,7 @@ with col2:
     )
     st.plotly_chart(fig_comm, use_container_width=True)
 
-map_sample = filtered.dropna(subset=["Latitude", "Longitude"]).sample(n=min(sample_size, len(filtered)), random_state=42)
+map_sample = filtered.dropna(subset=["Latitude", "Longitude"]).sample(n=10000, random_state=42)
 if len(map_sample) > 0:
     fig_map = px.density_mapbox(
         map_sample,
@@ -226,12 +226,14 @@ else:
 
 st.subheader("Crimes by day of week")
 # Lists for reindexing and renaming
-days_long = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-days_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+days_long = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+days_short = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
-# Count and reindex using full names first (to match your raw data)
-crime_by_day = filtered["day_name"].value_counts().reindex(days_long, fill_value=0)
+# Map the numeric DayOfWeek to day names
+filtered['DayOfWeek'] = filtered['DayOfWeek'].map(day_of_week_dict)
 
+# Count and reindex using full names
+crime_by_day = filtered["DayOfWeek"].value_counts().reindex(days_long, fill_value=0)
 # Replace full names with 3-letter abbreviations
 crime_by_day.index = days_short
 
@@ -254,19 +256,6 @@ fig_hour = px.line(
 )
 fig_hour.update_xaxes(tickmode="linear")
 st.plotly_chart(fig_hour, use_container_width=True)
-
-st.subheader("Crimes by hour of day")
-crime_by_hour = filtered["TimeOfDay"].value_counts().sort_index()
-fig_hour = px.line(
-    x=crime_by_hour.index,
-    y=crime_by_hour.values,
-    markers=True,
-    title="Crime Patterns by Hour",
-    labels={"x": "Hour of Day", "y": "Crime Count"}
-)
-fig_hour.update_xaxes(tickmode="linear")
-st.plotly_chart(fig_hour, use_container_width=True)
-
 
 st.markdown("---")
 
