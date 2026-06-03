@@ -13,16 +13,6 @@
     },
     "kmeans_results": [
         {
-            "k": 3,
-            "silhouette_score": 0.4303128873142564,
-            "davies_bouldin_score": 0.8622615909539005
-        },
-        {
-            "k": 4,
-            "silhouette_score": 0.4082429127149035,
-            "davies_bouldin_score": 0.8590662374908699
-        },
-        {
             "k": 5,
             "silhouette_score": 0.39656080461003024,
             "davies_bouldin_score": 0.8449806632735773
@@ -54,8 +44,8 @@
         }
     ],
     "best_kmeans": {
-        "k": 3,
-        "silhouette_score": 0.4303128873142564
+        "k": 5,
+        "silhouette_score": 0.39656080461003024
     },
     "dbscan_results": {
         "silhouette_score": 0.8952756996815746
