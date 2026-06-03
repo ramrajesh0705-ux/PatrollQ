@@ -4,13 +4,15 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="Exploratory Data Analysis", page_icon="ðﾟﾔﾎ", layout="wide")
+st.set_page_config(page_title="Exploratory Data Analysis", page_icon="🔎", layout="wide")
 
-st.title("ðﾟﾔﾎ Chicago Crime Exploratory Analysis")
+st.title("🔎 Chicago Crime Exploratory Analysis")
 st.markdown(
     "This page converts the exploratory notebook into an interactive Streamlit dashboard. "
     "Use the controls to filter the dataset and explore crime patterns by type, geography, time, arrest status, and domestic incidents."
 )
+required_columns = Date,Block,Primary Type,Description,Location Description,Arrest,Domestic,Beat,District,Ward,Community Area,Year,Latitude,Longitude,Hour,DayOfWeek,Month,IsWeekend,TimeOfDay,CrimeSeverity
+
 
 @st.cache_data
 def load_data():
@@ -18,20 +20,11 @@ def load_data():
     if not os.path.exists(data_path):
         return None
     df = pd.read_csv(data_path)
-    df["Date"] = pd.to_datetime(df["Date"], format="%d-%m-%Y %H:%M", errors="coerce")
     df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
     df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
     df["Arrest"] = df["Arrest"].astype(str).str.upper().map({"TRUE": True, "FALSE": False})
     df["Domestic"] = df["Domestic"].astype(str).str.upper().map({"TRUE": True, "FALSE": False})
     df["Primary Type"] = df["Primary Type"].astype("category")
-    if "month" not in df.columns and "Date" in df.columns:
-        df["month"] = df["Date"].dt.month
-    if "hour" not in df.columns and "Date" in df.columns:
-        df["hour"] = df["Date"].dt.hour
-    if "day_name" not in df.columns and "Date" in df.columns:
-        df["day_name"] = df["Date"].dt.day_name()
-    if "Year" not in df.columns and "Date" in df.columns:
-        df["Year"] = df["Date"].dt.year
 
     def get_season(month: int) -> str:
         if month in [12, 1, 2]:
@@ -42,7 +35,7 @@ def load_data():
             return "Summer"
         return "Fall"
 
-    df["season"] = df["month"].apply(get_season)
+    df["season"] = df["Month"].apply(get_season)
     return df
 
 
@@ -55,7 +48,7 @@ st.markdown(f"**Dataset loaded:** {len(df):,} records")
 
 with st.sidebar:
     st.header("Filters")
-    sample_size = st.slider("Sample size for maps and global charts", 10000, min(50000, len(df)), min(200000, len(df)), step=10000)
+    sample_size = st.slider("Sample size for maps and global charts", 10000, 50000, step=10000)
     year_options = [int(y) for y in sorted(df["Year"].dropna().unique())]
     selected_year = st.selectbox("Year", ["All"] + year_options, index=0)
     selected_day = st.selectbox("Day of week", ["All"] + ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], index=0)
@@ -70,9 +63,7 @@ if selected_season != "All":
     filtered = filtered[filtered["season"] == selected_season]
 
 st.markdown("---")
-st.header("list of columns")
-st.write(filtered.columns)
-st.markdown("----")
+
 # Crime Distribution
 st.header("1. Crime Distribution")
 
@@ -151,6 +142,23 @@ with col2:
     )
     st.plotly_chart(fig_comm, use_container_width=True)
 
+st.subheader("Spatial density and location clustering")
+map_sample = filtered.dropna(subset=["Latitude", "Longitude"]).sample(n=min(sample_size, len(filtered)), random_state=42)
+if len(map_sample) > 0:
+    fig_map = px.density_mapbox(
+        map_sample,
+        lat="Latitude",
+        lon="Longitude",
+        radius=10,
+        zoom=10,
+        height=600,
+        title="Crime Density Map",
+    )
+    fig_map.update_layout(mapbox_style="open-street-map")
+    st.plotly_chart(fig_map, use_container_width=True)
+else:
+    st.warning("No latitude/longitude data is available for the selected filters.")
+
 st.markdown("---")
 
 # Temporal Trends
@@ -168,22 +176,47 @@ fig_year = px.line(
 st.plotly_chart(fig_year, use_container_width=True)
 
 st.subheader("Crimes by month")
-crimes_by_month = filtered["month"].value_counts().reindex(range(1, 13), fill_value=0)
+import calendar
+
+# 1. Create a list of month abbreviations: ['Jan', 'Feb', 'Mar', ..., 'Dec']
+# (We use [1:] because calendar.month_abbr[0] is an empty string)
+month_names = list(calendar.month_abbr)[1:]
+
+# 2. Count crimes and reindex using the month names
+crimes_by_month = filtered["Month"].value_counts().reindex(range(1, 13), fill_value=0)
+crimes_by_month.index = month_names
+
+# 3. Plot exactly as you did before
 fig_month = px.bar(
     x=crimes_by_month.index,
     y=crimes_by_month.values,
     labels={"x": "Month", "y": "Number of Crimes"},
     title="Crime Volume by Month"
 )
+fig_month.show()
 st.plotly_chart(fig_month, use_container_width=True)
 
 st.subheader("Year-month crime heatmap")
-crimes_per_month = filtered.groupby(["Year", "month"]).size().reset_index(name="count")
+import calendar
+import plotly.graph_objects as go
+import streamlit as st
+
+# Create list of month names: ['Jan', 'Feb', ..., 'Dec']
+month_names = list(calendar.month_abbr)[1:]
+
+crimes_per_month = filtered.groupby(["Year", "Month"]).size().reset_index(name="count")
+
 if not crimes_per_month.empty:
-    heat = crimes_per_month.pivot(index="Year", columns="month", values="count").fillna(0)
+    # FIX: Changed columns="month" to columns="Month" to match your groupby casing
+    heat = crimes_per_month.pivot(index="Year", columns="Month", values="count").fillna(0)
+    
+    # Reindex to force columns 1 through 12, then rename to Jan-Dec
+    heat = heat.reindex(columns=range(1, 13), fill_value=0)
+    heat.columns = month_names
+
     fig_heat = go.Figure(data=go.Heatmap(
         z=heat.values,
-        x=heat.columns,
+        x=heat.columns,   # Now passes ['Jan', 'Feb', ..., 'Dec']
         y=heat.index,
         colorscale="Viridis",
         colorbar=dict(title="Count")
@@ -197,10 +230,21 @@ if not crimes_per_month.empty:
 else:
     st.warning("Not enough data to build the year-month heatmap.")
 
+import plotly.express as px
+import streamlit as st
+
 st.subheader("Crimes by day of week")
-crime_by_day = filtered["day_name"].value_counts().reindex([
-    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
-], fill_value=0)
+
+# Lists for reindexing and renaming
+days_long = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+days_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+# Count and reindex using full names first (to match your raw data)
+crime_by_day = filtered["day_name"].value_counts().reindex(days_long, fill_value=0)
+
+# Replace full names with 3-letter abbreviations
+crime_by_day.index = days_short
+
 fig_day = px.bar(
     x=crime_by_day.index,
     y=crime_by_day.values,
@@ -208,9 +252,8 @@ fig_day = px.bar(
     title="Crime Counts by Day of Week"
 )
 st.plotly_chart(fig_day, use_container_width=True)
-
 st.subheader("Crimes by hour of day")
-crime_by_hour = filtered["hour"].value_counts().sort_index()
+crime_by_hour = filtered["Hour"].value_counts().sort_index()
 fig_hour = px.line(
     x=crime_by_hour.index,
     y=crime_by_hour.values,
@@ -220,23 +263,6 @@ fig_hour = px.line(
 )
 fig_hour.update_xaxes(tickmode="linear")
 st.plotly_chart(fig_hour, use_container_width=True)
-
-st.subheader("Hourly crime patterns by year")
-crimes_hour_year = filtered.groupby(["Year", "hour"]).size().reset_index(name="count")
-if not crimes_hour_year.empty:
-    fig_hour_year = px.line(
-        crimes_hour_year,
-        x="hour",
-        y="count",
-        color="Year",
-        markers=True,
-        title="Hourly Crimes by Year",
-        labels={"hour": "Hour", "count": "Crime Count", "Year": "Year"}
-    )
-    fig_hour_year.update_xaxes(tickmode="linear")
-    st.plotly_chart(fig_hour_year, use_container_width=True)
-else:
-    st.warning("Not enough hourly data to show crime patterns by year.")
 
 st.markdown("---")
 
@@ -304,7 +330,7 @@ else:
     st.warning("Not enough data to calculate arrest rate by domestic flag.")
 
 st.subheader("Domestic crimes by hour")
-domestic_hour = filtered[filtered["Domestic"] == True].groupby("hour").size().reindex(range(24), fill_value=0)
+domestic_hour = filtered[filtered["Domestic"] == True].groupby("Hour").size().reindex(range(24), fill_value=0)
 fig_domestic_hour = px.line(
     x=domestic_hour.index,
     y=domestic_hour.values,
@@ -320,3 +346,7 @@ st.markdown(
 )
 
 st.success("✅ Exploratory analysis dashboard loaded successfully!")
+
+
+
+
