@@ -193,13 +193,16 @@ with st.spinner(f"Performing clustering with K={best_k}..."):
             peak_hour = cluster_data['Hour'].mode()
             peak = int(peak_hour.iloc[0]) if len(peak_hour) > 0 else 0
             
+            # Calculate percentage (fixed the rounding issue)
+            percentage = round((crime_count / len(valid_data) * 100), 1)
+            
             cluster_summary.append({
                 'Cluster ID': cluster_id,
                 'Cluster Name': cluster_names[cluster_id],
                 'Crime Count': crime_count,
                 'Most Frequent Primary Type': crime_type,
                 'Peak Hour': peak,
-                'Percentage': (crime_count / len(valid_data) * 100).round(1)
+                'Percentage': percentage
             })
         
         # Convert to DataFrame and sort by Crime Count
