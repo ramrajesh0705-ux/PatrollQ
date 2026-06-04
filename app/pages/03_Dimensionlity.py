@@ -99,8 +99,8 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.info("""
 **Interpretation:**
-- **Latitude & Longitude** drive 49% of variance - location matters most
-- **Month** 22% of variance - time of day matters
+- **Latitude & Longitude** drive 47% of variance - location matters most
+- time of day matters
 - Other features have lower impact
 """)
 
