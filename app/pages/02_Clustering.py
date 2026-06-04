@@ -209,19 +209,6 @@ with st.spinner(f"Performing clustering with K={best_k}..."):
         cluster_summary_df = pd.DataFrame(cluster_summary)
         cluster_summary_df = cluster_summary_df.sort_values('Crime Count', ascending=False)
         
-        # Display cluster summary table
-        st.subheader("📊 Cluster Summary")
-        st.dataframe(
-            cluster_summary_df[['Cluster Name', 'Crime Count', 'Most Frequent Primary Type', 'Peak Hour', 'Percentage']],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                'Crime Count': st.column_config.NumberColumn(format="%d"),
-                'Peak Hour': st.column_config.NumberColumn(format="%d:00"),
-                'Percentage': st.column_config.NumberColumn(format="%.1f%%")
-            }
-        )
-        
         # Map visualization with cluster names in hover
         sample_cluster = valid_data.sample(min(5000, len(valid_data)), random_state=42)
         
