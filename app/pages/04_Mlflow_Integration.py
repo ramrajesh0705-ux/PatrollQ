@@ -70,7 +70,7 @@ st.json({
     },
     "metrics": {
         "silhouette_score": best['silhouette_score'],
-        "davies_bouldin_score": kmeans_data[best['k']-3]['davies_bouldin_score']
+        "davies_bouldin_score": kmeans_data[best['k']-10]['davies_bouldin_score']
     },
     "created_at": "2026-04-20",
     "updated_at": "2026-04-20"
