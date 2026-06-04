@@ -77,7 +77,7 @@ with col2:
 with col3:
     st.metric("PC1+PC2+PC3 Variance", f"{cumsum_var[2]:.1%} ✓")
 
-st.success("✓ 3 components explain 75% of variance (Target: >70%)")
+st.success("✓ 3 components explain 62.1% of variance")
 
 # ====== Feature Importance ======
 st.subheader("Top 5 Important Features")
@@ -99,8 +99,8 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.info("""
 **Interpretation:**
-- **Latitude & Longitude** drive 56% of variance - location matters most
-- **Hour** drives 22% of variance - time of day matters
+- **Latitude & Longitude** drive 49% of variance - location matters most
+- **Month** 22% of variance - time of day matters
 - Other features have lower impact
 """)
 
