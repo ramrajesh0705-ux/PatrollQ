@@ -119,6 +119,33 @@ st.success(f"**K={best_k}** selected as best model with silhouette score of **{b
 # ====== Geographic Visualization ======
 st.subheader("📍 Geographic Crime Distribution with Clusters")
 
+# District name mapping for cluster naming
+district_name_mapping = {
+    1.0: 'Central/Loop',
+    2.0: 'Wentworth (South Side)',
+    3.0: 'Grand Crossing (South Side)',
+    4.0: 'South Chicago (South Side)',
+    5.0: 'Calumet (Far South Side)',
+    6.0: 'Gresham (South Side)',
+    7.0: 'Englewood (South Side)',
+    8.0: 'Chicago Lawn (Southwest Side)',
+    9.0: 'Deering (Southwest Side)',
+    10.0: 'Ogden (West Side)',
+    11.0: 'Harrison (West Side)',
+    12.0: 'Near West (West Side)',
+    14.0: 'Shakespeare (Near North/West)',
+    15.0: 'Austin (West Side)',
+    16.0: 'Jefferson Park (Northwest Side)',
+    17.0: 'Albany Park (North Side)',
+    18.0: 'Near North (Near North Side)',
+    19.0: 'Town Hall (North Side)',
+    20.0: 'Lincoln (North Side)',
+    22.0: 'Morgan Park (Far South Side)',
+    24.0: 'Rogers Park (Far North Side)',
+    25.0: 'Grand Central (Northwest Side)',
+    31.0: 'Chicago Police Academy (Training/Other)'
+}
+
 # Perform clustering using best_k
 with st.spinner(f"Performing clustering with K={best_k}..."):
     # Filter out rows with missing coordinates
@@ -137,28 +164,74 @@ with st.spinner(f"Performing clustering with K={best_k}..."):
         # Display cluster statistics
         st.success(f"✅ Clustering completed with {best_k} clusters")
         
-        # Cluster sizes
-        cluster_sizes = valid_data['Cluster'].value_counts().sort_index()
+        # Calculate cluster names based on most frequent district
+        cluster_names = {}
+        cluster_districts = {}
         
-        # Create metrics for each cluster
-        cols = st.columns(min(4, best_k))
-        for i, (cluster_id, size) in enumerate(cluster_sizes.items()):
-            with cols[i % len(cols)]:
-                percentage = (size / len(valid_data)) * 100
-                st.metric(
-                    f"Cluster {cluster_id}",
-                    f"{size:,} crimes",
-                    f"{percentage:.1f}% of total"
-                )
+        for cluster_id in range(best_k):
+            cluster_data = valid_data[valid_data['Cluster'] == cluster_id]
+            # Get most frequent district in this cluster
+            most_frequent_district = cluster_data['District'].mode()
+            if len(most_frequent_district) > 0:
+                district_val = most_frequent_district.iloc[0]
+                cluster_districts[cluster_id] = district_val
+                cluster_names[cluster_id] = district_name_mapping.get(district_val, f"Cluster {cluster_id}")
+            else:
+                cluster_names[cluster_id] = f"Cluster {cluster_id}"
         
-        # Map visualization
+        # Create cluster summary DataFrame
+        cluster_summary = []
+        for cluster_id in range(best_k):
+            cluster_data = valid_data[valid_data['Cluster'] == cluster_id]
+            crime_count = len(cluster_data)
+            
+            # Most frequent crime type
+            most_frequent_crime = cluster_data['Primary Type'].mode()
+            crime_type = most_frequent_crime.iloc[0] if len(most_frequent_crime) > 0 else "Unknown"
+            
+            # Peak hour
+            peak_hour = cluster_data['Hour'].mode()
+            peak = int(peak_hour.iloc[0]) if len(peak_hour) > 0 else 0
+            
+            cluster_summary.append({
+                'Cluster ID': cluster_id,
+                'Cluster Name': cluster_names[cluster_id],
+                'Crime Count': crime_count,
+                'Most Frequent Primary Type': crime_type,
+                'Peak Hour': peak,
+                'Percentage': (crime_count / len(valid_data) * 100).round(1)
+            })
+        
+        # Convert to DataFrame and sort by Crime Count
+        cluster_summary_df = pd.DataFrame(cluster_summary)
+        cluster_summary_df = cluster_summary_df.sort_values('Crime Count', ascending=False)
+        
+        # Display cluster summary table
+        st.subheader("📊 Cluster Summary")
+        st.dataframe(
+            cluster_summary_df[['Cluster Name', 'Crime Count', 'Most Frequent Primary Type', 'Peak Hour', 'Percentage']],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                'Crime Count': st.column_config.NumberColumn(format="%d"),
+                'Peak Hour': st.column_config.NumberColumn(format="%d:00"),
+                'Percentage': st.column_config.NumberColumn(format="%.1f%%")
+            }
+        )
+        
+        # Map visualization with cluster names in hover
         sample_cluster = valid_data.sample(min(5000, len(valid_data)), random_state=42)
+        
+        # Add cluster names to the sample data
+        sample_cluster['Cluster Name'] = sample_cluster['Cluster'].map(cluster_names)
         
         fig = px.scatter_mapbox(
             sample_cluster,
             lat='Latitude',
             lon='Longitude',
             color='Cluster',
+            hover_name='Cluster Name',
+            hover_data={'Cluster': True, 'Primary Type': True, 'Hour': True},
             title=f"Crime Clusters (K={best_k}) - Sample of {len(sample_cluster):,} points",
             zoom=10,
             height=600,
@@ -173,45 +246,43 @@ with st.spinner(f"Performing clustering with K={best_k}..."):
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Most frequent crime types per cluster
+        # Most frequent crime types per cluster with names
         st.subheader("🔍 Most Frequent Crime Types by Cluster")
         
-        for cluster_id in range(best_k):
-            if cluster_id in cluster_sizes.index:
-                cluster_data = valid_data[valid_data['Cluster'] == cluster_id]
-                top_crimes = cluster_data['Primary Type'].value_counts().head(3)
-                
-                with st.expander(f"📍 Cluster {cluster_id} - {cluster_sizes[cluster_id]:,} crimes ({cluster_sizes[cluster_id]/len(valid_data)*100:.1f}%)"):
-                    crime_df = pd.DataFrame({
-                        'Crime Type': top_crimes.index,
-                        'Count': top_crimes.values,
-                        'Percentage': (top_crimes.values / len(cluster_data) * 100).round(1)
-                    })
-                    st.dataframe(crime_df, use_container_width=True, hide_index=True)
+        for _, row in cluster_summary_df.iterrows():
+            cluster_id = row['Cluster ID']
+            cluster_name = row['Cluster Name']
+            cluster_data = valid_data[valid_data['Cluster'] == cluster_id]
+            top_crimes = cluster_data['Primary Type'].value_counts().head(5)
+            
+            with st.expander(f"📍 {cluster_name} - {row['Crime Count']:,} crimes ({row['Percentage']:.1f}%)"):
+                crime_df = pd.DataFrame({
+                    'Crime Type': top_crimes.index,
+                    'Count': top_crimes.values,
+                    'Percentage': (top_crimes.values / len(cluster_data) * 100).round(1)
+                })
+                st.dataframe(crime_df, use_container_width=True, hide_index=True)
         
-        # Peak hour analysis
+        # Peak hour analysis with cluster names
         st.subheader("⏰ Peak Hours by Cluster")
         
         peak_hours = []
-        for cluster_id in range(best_k):
-            if cluster_id in cluster_sizes.index:
-                cluster_data = valid_data[valid_data['Cluster'] == cluster_id]
-                peak_hour = cluster_data['Hour'].mode()
-                if len(peak_hour) > 0:
-                    peak_hours.append({
-                        'Cluster': cluster_id,
-                        'Peak Hour': f"{int(peak_hour.iloc[0])}:00",
-                        'Crime Count': len(cluster_data)
-                    })
+        for _, row in cluster_summary_df.iterrows():
+            peak_hours.append({
+                'Cluster Name': row['Cluster Name'],
+                'Peak Hour': f"{int(row['Peak Hour'])}:00",
+                'Crime Count': row['Crime Count'],
+                'Most Frequent Crime': row['Most Frequent Primary Type']
+            })
         
-        if peak_hours:
-            peak_df = pd.DataFrame(peak_hours)
-            st.dataframe(peak_df, use_container_width=True, hide_index=True)
+        peak_df = pd.DataFrame(peak_hours)
+        st.dataframe(peak_df, use_container_width=True, hide_index=True)
         
         # Save to session state
         st.session_state['clustering_results'] = valid_data
         st.session_state['kmeans_model'] = kmeans
         st.session_state['best_k'] = best_k
+        st.session_state['cluster_summary'] = cluster_summary_df
         
     else:
         st.error("No valid coordinate data available for clustering")
@@ -220,8 +291,9 @@ with st.spinner(f"Performing clustering with K={best_k}..."):
 if 'clustering_results' in st.session_state:
     st.subheader("📈 Cluster Analysis Summary")
     cluster_data = st.session_state['clustering_results']
+    cluster_summary_df = st.session_state['cluster_summary']
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Clusters", st.session_state['best_k'])
     
@@ -232,5 +304,10 @@ if 'clustering_results' in st.session_state:
         # Calculate average crimes per cluster
         avg_crimes = len(cluster_data) / st.session_state['best_k']
         st.metric("Avg Crimes per Cluster", f"{avg_crimes:,.0f}")
+    
+    with col4:
+        # Largest cluster
+        largest_cluster = cluster_summary_df.iloc[0]
+        st.metric("Largest Cluster", largest_cluster['Cluster Name'])
 
 st.success("✅ Clustering analysis loaded successfully!")
