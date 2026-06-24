@@ -325,20 +325,4 @@ if not arrest_domestic.empty:
 else:
     st.warning("Not enough data to calculate arrest rate by domestic flag.")
 
-st.subheader("Domestic crimes by hour")
-domestic_hour = filtered[filtered["Domestic"] == True].groupby("Hour").size().reindex(range(24), fill_value=0)
-fig_domestic_hour = px.line(
-    x=domestic_hour.index,
-    y=domestic_hour.values,
-    markers=True,
-    title="Domestic Crimes by Hour",
-    labels={"x": "Hour", "y": "Number of Domestic Crimes"}
-)
-fig_domestic_hour.update_xaxes(tickmode="linear")
-st.plotly_chart(fig_domestic_hour, use_container_width=True)
-
-st.markdown(
-    "Domestic incidents are often concentrated in private locations and may show different hourly patterns than the overall crime profile."
-)
-
 st.success("✅ Exploratory analysis dashboard loaded successfully!")
