@@ -7,11 +7,6 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="Exploratory Data Analysis", page_icon="ðﾟﾔﾎ", layout="wide")
 
 st.title("Chicago Crime Exploratory Analysis")
-st.markdown(
-    "This page converts the exploratory notebook into an interactive Streamlit dashboard. "
-    "Use the controls to filter the dataset and explore crime patterns by type, geography, time, arrest status, and domestic incidents."
-)
-
 @st.cache_data
 def load_data():
     data_path = "data/processed/crime_cleaned.csv"
