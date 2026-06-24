@@ -77,19 +77,9 @@ try:
     X_scaled = scaler.fit_transform(X)
     logger.info("✓ Features scaled successfully")
     
-    # -------- STEP 6: Dimensionality Reduction (PCA) --------
-    logger.info("STEP 6: Applying PCA for feature reduction...")
-    X_pca, explained_var, pca_model = apply_pca(X_scaled, n_components=3)
     
-    feature_importance = get_feature_importance(pca_model, X.columns.tolist())
-    logger.info(f"✓ PCA completed. Explained variance: {np.cumsum(explained_var)[-1]:.4f}")
-    logger.info(f"✓ Top 5 Important Features: {list(feature_importance.items())[:5]}")
-    
-    # Save PCA results
-    save_dimensionality_results(X_pca, explained_var, feature_importance)
-    
-    # -------- STEP 7: K-Means Clustering --------
-    logger.info("STEP 7: Training K-Means clustering models...")
+    # -------- STEP 6: K-Means Clustering --------
+    logger.info("STEP 6: Training K-Means clustering models...")
     #For clustering we only need coordinates
     df = df[['Latitude','Longitude']]
     scaler = StandardScaler()
@@ -98,7 +88,7 @@ try:
     best_kmeans_k = None
     best_kmeans_score = -1
     
-    for k in range(3, 11):
+    for k in range(4, 11):
         logger.info(f"  Testing K-Means with K={k}...")
         
         with mlflow.start_run(nested=True):
@@ -126,8 +116,8 @@ try:
     
     logger.info(f"✓ Best K-Means: K={best_kmeans_k}, Score={best_kmeans_score:.4f}")
     
-    # -------- STEP 8: DBSCAN Clustering --------
-    logger.info("STEP 8: Training DBSCAN clustering...")
+    # -------- STEP 7: DBSCAN Clustering --------
+    logger.info("STEP 7: Training DBSCAN clustering...")
     
     with mlflow.start_run(nested=True):
         dbscan_labels = dbscan_cluster(X_scaled)
@@ -147,8 +137,8 @@ try:
         
         logger.info(f"✓ DBSCAN: Silhouette={db_score_dbscan:.4f}")
     
-    # -------- STEP 9: Hierarchical Clustering --------
-    logger.info("STEP 9: Training Hierarchical clustering...")
+    # -------- STEP 8: Hierarchical Clustering --------
+    logger.info("STEP 8: Training Hierarchical clustering...")
     
     from sklearn.cluster import AgglomerativeClustering
     gc.collect()
@@ -163,8 +153,8 @@ try:
         
         logger.info(f"✓ Hierarchical: Silhouette={hier_score:.4f}")
     
-    # -------- STEP 10: Save Results --------
-    logger.info("STEP 10: Saving clustering results...")
+    # -------- STEP 9: Save Results --------
+    logger.info("STEP 9: Saving clustering results...")
     
     os.makedirs("outputs", exist_ok=True)
     
@@ -192,8 +182,8 @@ try:
     
     logger.info("✓ Results saved to outputs/clustering_results.json")
     
-    # -------- STEP 11: Register Model --------
-    logger.info("STEP 11: Registering best model in MLflow...")
+    # -------- STEP 10: Register Model --------
+    logger.info("STEP 10: Registering best model in MLflow...")
     
     with mlflow.start_run(run_name="best_kmeans_model"):
         labels, score = kmeans_cluster(X_scaled, k=best_kmeans_k)
@@ -204,6 +194,18 @@ try:
         mlflow.log_artifact("outputs/clustering_results.json")
         
         logger.info("✓ Best model registered in MLflow")
+        
+    # -------- STEP 11: Dimensionality Reduction (PCA) --------
+    logger.info("STEP 11 Applying PCA for feature reduction...")
+    X_pca, explained_var, pca_model = apply_pca(X_scaled, n_components=3)
+    
+    feature_importance = get_feature_importance(pca_model, X.columns.tolist())
+    logger.info(f"✓ PCA completed. Explained variance: {np.cumsum(explained_var)[-1]:.4f}")
+    logger.info(f"✓ Top 5 Important Features: {list(feature_importance.items())[:5]}")
+    
+    # Save PCA results
+    save_dimensionality_results(X_pca, explained_var, feature_importance)
+    
     
     logger.info("="*80)
     logger.info("✓ PIPELINE COMPLETED SUCCESSFULLY!")
