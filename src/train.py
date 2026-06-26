@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score, davies_bouldin_score
+from sklearn.cluster import AgglomerativeClustering
 
 from data_loader import load_data
 from preprocessing import clean_data
