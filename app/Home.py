@@ -13,42 +13,15 @@ st.set_page_config(
 st.title("🚓 PatrolIQ - Smart Safety Analytics Platform")
 
 st.markdown("""
-Analyze Chicago crime patterns using Machine Learning & Data Science.
+Analyze Chicago crime patterns using Machine Learning.
 """)
 
 # Show key metrics
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric("Records Analyzed", "500,000")
-
-with col2:
-    st.metric("Crime Types", "33")
-
-with col3:
-    st.metric("Districts", "25")
-
-# Load results if available
-results_file = "outputs/clustering_results.json"
-if os.path.exists(results_file):
-    with open(results_file, 'r') as f:
-        results = json.load(f)
-    
-    st.subheader("Best Model Results")
-    best_k = results["best_kmeans"]["k"]
-    best_score = results["best_kmeans"]["silhouette_score"]
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Optimal Clusters (K)", best_k)
-    with col2:
-        st.metric("Silhouette Score", f"{best_score:.4f}")
-    with col3:
-        st.metric("Status", "✓ Ready")
-else:
-    st.warning("⚠️ Run: python src/train.py first")
-
 st.markdown("---")
+st.subheader("Problem Statement")
+st.markdown("Chicago is located in the United States Of America. Nowdays, The crime rate is increasing day by day.
+The Police Department face lot of challenges when it comes to how to deploy their police resources to prevent the criminal activities.
+As an analyst , We help the police department to use their resources efficiently to control crimes by providing data driven insights using unsupervised machine learning models.")
 
 st.subheader("📱 Navigation")
 st.info("""
