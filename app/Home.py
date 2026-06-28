@@ -26,7 +26,7 @@ As an analyst , We help the police department to use their resources efficiently
 st.subheader("📱 Navigation")
 st.info("""
 Use the **sidebar menu** (←) to navigate:
-- **Crime Analysis** - Crime statistics
+- **Exploratory Data Analysis** - Crime statistics
 - **Clustering** - Geographic hotspots
 - **Dimensionality** - PCA/t-SNE visualization  
 - **MLflow Integration** - Model tracking
