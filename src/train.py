@@ -89,7 +89,7 @@ try:
     best_kmeans_k = None
     best_kmeans_score = -1
     
-    for k in range(4, 11):
+    for k in range(5, 11):
         logger.info(f"  Testing K-Means with K={k}...")
         
         with mlflow.start_run(nested=True):
