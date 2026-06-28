@@ -18,10 +18,10 @@ Analyze Chicago crime patterns using Machine Learning.
 
 # Show key metrics
 st.markdown("---")
-st.subheader("Problem Statement")
+st.subheader("""Problem Statement")
 st.markdown("Chicago is located in the United States Of America. Nowdays, The crime rate is increasing day by day.
 The Police Department face lot of challenges when it comes to how to deploy their police resources to prevent the criminal activities.
-As an analyst , We help the police department to use their resources efficiently to control crimes by providing data driven insights using unsupervised machine learning models.")
+As an analyst , We help the police department to use their resources efficiently to control crimes by providing data driven insights using unsupervised machine learning models.""")
 
 st.subheader("📱 Navigation")
 st.info("""
