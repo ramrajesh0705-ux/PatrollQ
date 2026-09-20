@@ -2,7 +2,7 @@
 
 PatrolIQ is a Streamlit-based urban safety analytics platform for exploring Chicago crime data and identifying geographic and temporal patterns that can support evidence-based patrol planning. The current implementation is an offline analytics and machine-learning prototype: it cleans a Chicago crime CSV, derives time and severity features, evaluates unsupervised clustering methods, applies PCA, tracks experiments with MLflow, and presents the resulting analysis through an interactive dashboard.
 
-> **Scope note:** The repository currently implements historical crime-data analysis and hotspot exploration. It does not currently include live sensor ingestion, user-report intake, automated alert dispatch, emergency-service integrations, patrol-route optimization, authentication, or a persistent application database.
+🚀 [Live Demo](https://guvismartpatrolq.streamlit.app/)
 
 ## Contents
 
@@ -219,16 +219,6 @@ The checked-in example artifacts include PCA results for 50,000 rows and three c
 
 MLflow stores local tracking data in the repository's `mlflow.db`/`mlruns` paths. For reproducible experiments, preserve the input-data version, training log, generated JSON files, and MLflow run metadata together.
 
-## Configuration and environment variables
-
-No required `.env` file, secret, database URL, map token, or external API key is referenced by the current Python code. Paths are currently hard-coded, including:
-
-- `data/raw/crimes.csv` in `src/train.py`
-- `data/processed/crime_cleaned.csv` in the Streamlit pages
-- `outputs/*.json` for dashboard results
-
-If the platform is extended with live feeds, authenticated APIs, or a commercial mapping provider, add documented environment variables and keep credentials out of the repository.
-
 ## Known limitations
 
 - The platform is historical/offline analytics, not a real-time incident-response system.
@@ -238,7 +228,3 @@ If the platform is extended with live feeds, authenticated APIs, or a commercial
 - The dashboard uses generated local files and relative paths; start commands should be run from the repository root.
 - Clustering and visualizations can be memory-intensive for large datasets.
 - The model outputs are analytical clusters, not predictions of individual behavior or determinations of criminality. Operational use should include privacy, governance, bias, and human-review safeguards.
-
-## License
-
-No license file is currently included in the repository. Add an explicit license before distributing or deploying PatrolIQ.
